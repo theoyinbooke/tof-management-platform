@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { authenticateAndAuthorize } from "./auth";
+import { internal } from "./_generated/api";
 
 /**
  * Get all fee categories for a foundation
@@ -472,6 +473,58 @@ export const updateStatus = mutation({
       riskLevel: args.status === "paid" ? "low" : "medium",
       createdAt: Date.now(),
     });
+
+    // Create notification for status changes
+    if (record.beneficiaryId) {
+      const beneficiary = await ctx.db.get(record.beneficiaryId);
+      if (beneficiary) {
+        let notificationTitle = "";
+        let notificationMessage = "";
+        let priority: "low" | "medium" | "high" | "urgent" = "medium";
+
+        switch (args.status) {
+          case "approved":
+            notificationTitle = "Payment Approved";
+            notificationMessage = `Your payment request for ${record.amount.toLocaleString()} ${record.currency} has been approved.`;
+            priority = "medium";
+            break;
+          case "paid":
+            notificationTitle = "Payment Completed";
+            notificationMessage = `Your payment of ${record.amount.toLocaleString()} ${record.currency} has been processed successfully.`;
+            priority = "low";
+            break;
+          case "overdue":
+            notificationTitle = "Payment Overdue";
+            notificationMessage = `Your payment of ${record.amount.toLocaleString()} ${record.currency} is now overdue. Please make payment as soon as possible.`;
+            priority = "high";
+            break;
+          case "cancelled":
+            notificationTitle = "Payment Cancelled";
+            notificationMessage = `Your payment request for ${record.amount.toLocaleString()} ${record.currency} has been cancelled.`;
+            priority = "medium";
+            break;
+        }
+
+        if (notificationTitle) {
+          await ctx.scheduler.runAfter(0, internal.notifications.createSystemNotification, {
+            foundationId: record.foundationId,
+            recipientId: beneficiary.userId,
+            type: "financial",
+            priority,
+            title: notificationTitle,
+            message: notificationMessage,
+            actionUrl: `/financial/payments/${args.recordId}`,
+            actionText: "View Payment",
+            relatedEntityType: "financial_records",
+            relatedEntityId: args.recordId,
+            metadata: {
+              beneficiaryId: record.beneficiaryId,
+            },
+            channels: ["in_app", args.status === "overdue" ? "email" : undefined].filter(Boolean) as any,
+          });
+        }
+      }
+    }
     
     return { success: true };
   },

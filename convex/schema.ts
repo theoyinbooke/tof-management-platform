@@ -44,6 +44,17 @@ export default defineSchema({
     ),
     isActive: v.boolean(),
     lastLogin: v.optional(v.number()),
+    
+    // Communication preferences
+    communicationPreferences: v.optional(v.object({
+      emailNotifications: v.boolean(),
+      smsNotifications: v.boolean(),
+      academicAlerts: v.boolean(),
+      financialAlerts: v.boolean(),
+      administrativeNotifications: v.boolean(),
+      marketingCommunications: v.boolean(),
+    })),
+    
     createdAt: v.number(),
     updatedAt: v.number()
   }).index("by_clerk_id", ["clerkId"])
@@ -799,88 +810,6 @@ export default defineSchema({
     .index("by_sent_status", ["foundationId", "isSent"])
     .index("by_priority", ["foundationId", "priority"]),
 
-  // Direct messages between users
-  messages: defineTable({
-    foundationId: v.id("foundations"),
-    
-    // Participants
-    senderId: v.id("users"),
-    recipientId: v.id("users"),
-    
-    // Content
-    subject: v.optional(v.string()),
-    content: v.string(),
-    messageType: v.union(
-      v.literal("direct_message"),
-      v.literal("inquiry"),
-      v.literal("support_request"),
-      v.literal("feedback")
-    ),
-    
-    // Thread Management
-    threadId: v.optional(v.string()), // Groups related messages
-    replyToId: v.optional(v.id("messages")), // Reply to specific message
-    
-    // Status
-    isRead: v.boolean(),
-    readAt: v.optional(v.number()),
-    isArchived: v.boolean(),
-    
-    // Priority
-    priority: v.union(
-      v.literal("normal"),
-      v.literal("high"),
-      v.literal("urgent")
-    ),
-    
-    // Attachments
-    attachments: v.optional(v.array(v.id("_storage"))),
-    
-    createdAt: v.number(),
-    updatedAt: v.number()
-  }).index("by_sender", ["senderId"])
-    .index("by_recipient", ["recipientId"])
-    .index("by_thread", ["threadId"])
-    .index("by_foundation", ["foundationId"]),
-
-  // Communication templates
-  communicationTemplates: defineTable({
-    foundationId: v.id("foundations"),
-    
-    name: v.string(), // "Welcome Email", "Payment Reminder"
-    description: v.string(),
-    
-    // Template Content
-    subject: v.string(),
-    content: v.string(), // Supports template variables {{firstName}}
-    
-    // Template Type
-    templateType: v.union(
-      v.literal("email"),
-      v.literal("sms"),
-      v.literal("in_app")
-    ),
-    
-    // Usage
-    category: v.union(
-      v.literal("welcome"),
-      v.literal("reminder"),
-      v.literal("congratulations"),
-      v.literal("alert"),
-      v.literal("follow_up")
-    ),
-    
-    // Variables Available
-    availableVariables: v.array(v.string()), // ["firstName", "amount", "dueDate"]
-    
-    // Status
-    isActive: v.boolean(),
-    
-    createdBy: v.id("users"),
-    createdAt: v.number(),
-    updatedAt: v.number()
-  }).index("by_foundation", ["foundationId"])
-    .index("by_category", ["foundationId", "category"]),
 
   // Announcements
   announcements: defineTable({
@@ -1730,4 +1659,221 @@ export default defineSchema({
     .index("by_foundation", ["foundationId"])
     .index("by_document_type", ["foundationId", "documentType"])
     .index("by_uploader", ["uploadedBy"]),
+
+  // ===================================
+  // EXTERNAL COMMUNICATION SYSTEM
+  // ===================================
+
+  // Communication logs for email/SMS tracking
+  communicationLogs: defineTable({
+    foundationId: v.id("foundations"),
+    
+    // Communication details
+    type: v.union(v.literal("email"), v.literal("sms")),
+    recipient: v.string(), // Email address or phone number
+    subject: v.optional(v.string()), // For emails
+    content: v.string(),
+    
+    // Template information
+    template: v.optional(v.string()),
+    templateData: v.optional(v.object({})),
+    
+    // Status tracking
+    status: v.union(
+      v.literal("pending"),
+      v.literal("sent"),
+      v.literal("delivered"),
+      v.literal("failed"),
+      v.literal("bounced")
+    ),
+    
+    // Delivery information
+    sentAt: v.optional(v.number()),
+    deliveredAt: v.optional(v.number()),
+    
+    // Error handling
+    attemptCount: v.number(),
+    lastAttemptAt: v.optional(v.number()),
+    errorMessage: v.optional(v.string()),
+    
+    // Priority
+    priority: v.union(
+      v.literal("low"),
+      v.literal("normal"),
+      v.literal("high"),
+      v.literal("urgent")
+    ),
+    
+    // External service details
+    externalMessageId: v.optional(v.string()), // Provider's message ID
+    externalStatus: v.optional(v.string()), // Provider's status
+    
+    createdAt: v.number(),
+    updatedAt: v.number()
+  }).index("by_foundation", ["foundationId"])
+    .index("by_type", ["foundationId", "type"])
+    .index("by_status", ["foundationId", "status"])
+    .index("by_recipient", ["recipient"]),
+
+  // Enhanced communication templates
+  communicationTemplates: defineTable({
+    foundationId: v.id("foundations"),
+    
+    name: v.string(),
+    description: v.optional(v.string()),
+    
+    // Template type and category
+    type: v.union(v.literal("email"), v.literal("sms")),
+    category: v.union(
+      v.literal("academic"),
+      v.literal("financial"),
+      v.literal("administrative"),
+      v.literal("alert"),
+      v.literal("welcome")
+    ),
+    
+    // Template content
+    subject: v.optional(v.string()), // For email templates
+    content: v.string(),
+    
+    // Available variables for substitution
+    variables: v.array(v.string()), // ["firstName", "amount", "dueDate"]
+    
+    // Template status
+    isActive: v.boolean(),
+    
+    // Usage statistics
+    usageCount: v.optional(v.number()),
+    lastUsed: v.optional(v.number()),
+    
+    createdBy: v.id("users"),
+    createdAt: v.number(),
+    updatedAt: v.number()
+  }).index("by_foundation", ["foundationId"])
+    .index("by_type", ["foundationId", "type"])
+    .index("by_category", ["foundationId", "category"]),
+
+  // Bulk communication tracking
+  bulkCommunications: defineTable({
+    foundationId: v.id("foundations"),
+    
+    // Communication details
+    subject: v.optional(v.string()),
+    message: v.string(),
+    channels: v.array(v.union(v.literal("email"), v.literal("sms"), v.literal("in_app"))),
+    
+    // Template information
+    templateId: v.optional(v.id("communicationTemplates")),
+    
+    // Targeting
+    category: v.union(
+      v.literal("academic"),
+      v.literal("financial"),
+      v.literal("administrative"),
+      v.literal("alert"),
+      v.literal("announcement")
+    ),
+    
+    // Recipient information
+    recipientCount: v.number(),
+    sentCount: v.number(),
+    failedCount: v.number(),
+    
+    // Status
+    status: v.union(
+      v.literal("pending"),
+      v.literal("processing"),
+      v.literal("completed"),
+      v.literal("failed")
+    ),
+    
+    // Priority
+    priority: v.union(
+      v.literal("low"),
+      v.literal("normal"),
+      v.literal("high"),
+      v.literal("urgent")
+    ),
+    
+    // Timing
+    scheduledFor: v.optional(v.number()), // For scheduled sends
+    completedAt: v.optional(v.number()),
+    
+    createdBy: v.id("users"),
+    createdAt: v.number(),
+    updatedAt: v.number()
+  }).index("by_foundation", ["foundationId"])
+    .index("by_status", ["foundationId", "status"])
+    .index("by_category", ["foundationId", "category"]),
+
+  // Enhanced messaging system - conversations
+  conversations: defineTable({
+    foundationId: v.id("foundations"),
+    
+    // Participants
+    participantIds: v.array(v.id("users")),
+    createdBy: v.id("users"),
+    
+    // Conversation details
+    title: v.optional(v.string()),
+    type: v.union(
+      v.literal("direct"),
+      v.literal("group"),
+      v.literal("program"),
+      v.literal("announcement")
+    ),
+    
+    // Associated entities
+    metadata: v.optional(v.object({
+      beneficiaryId: v.optional(v.id("beneficiaries")),
+      programId: v.optional(v.id("programs")),
+      sessionId: v.optional(v.id("academicSessions")),
+    })),
+    
+    // Status
+    isActive: v.boolean(),
+    
+    createdAt: v.number(),
+    updatedAt: v.number()
+  }).index("by_foundation", ["foundationId"])
+    .index("by_type", ["foundationId", "type"]),
+
+  // Enhanced messaging system - messages
+  messages: defineTable({
+    conversationId: v.id("conversations"),
+    foundationId: v.id("foundations"),
+    
+    // Message details
+    senderId: v.id("users"),
+    content: v.string(),
+    type: v.union(
+      v.literal("text"),
+      v.literal("file"),
+      v.literal("image"),
+      v.literal("system")
+    ),
+    
+    // File attachments
+    attachmentId: v.optional(v.id("_storage")),
+    fileName: v.optional(v.string()),
+    fileSize: v.optional(v.number()),
+    
+    // Reply functionality
+    replyToId: v.optional(v.id("messages")),
+    
+    // Status tracking
+    isRead: v.boolean(),
+    deliveredTo: v.array(v.id("users")),
+    readBy: v.array(v.id("users")),
+    
+    // Message management
+    isDeleted: v.optional(v.boolean()),
+    deletedBy: v.optional(v.id("users")),
+    deletedAt: v.optional(v.number()),
+    
+    createdAt: v.number(),
+    updatedAt: v.number()
+  }).index("by_conversation", ["conversationId"])
+    .index("by_foundation", ["foundationId"])
+    .index("by_sender", ["senderId"]),
 });

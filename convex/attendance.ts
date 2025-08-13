@@ -6,6 +6,7 @@ import { v } from "convex/values";
 import { query, mutation } from "./_generated/server";
 import { authenticateAndAuthorize } from "./auth";
 import { Doc, Id } from "./_generated/dataModel";
+import { internal } from "./_generated/api";
 
 // ===================================
 // ATTENDANCE RECORDS MANAGEMENT
@@ -117,9 +118,9 @@ export const getAttendanceSummary = query({
 
     // Calculate summary statistics
     const totalSessions = attendanceRecords.length;
-    const presentCount = attendanceRecords.filter(r => r.status === "present").length;
-    const absentCount = attendanceRecords.filter(r => r.status === "absent").length;
-    const lateCount = attendanceRecords.filter(r => r.status === "late").length;
+    const presentCount = attendanceRecords.filter((r: any) => r.status === "present").length;
+    const absentCount = attendanceRecords.filter((r: any) => r.status === "absent").length;
+    const lateCount = attendanceRecords.filter((r: any) => r.status === "late").length;
 
     const attendanceRate = totalSessions > 0 ? (presentCount / totalSessions) * 100 : 0;
     const lateRate = totalSessions > 0 ? (lateCount / totalSessions) * 100 : 0;
@@ -412,7 +413,7 @@ export const recordSessionAttendance = mutation({
       // Update enrollment
       await ctx.db.patch(attendanceRecord.enrollmentId, {
         attendance: updatedAttendance,
-        attendanceRate,
+        // attendanceRate field not in schema - calculated from attendance array
         updatedAt: Date.now(),
       });
     }
@@ -507,7 +508,7 @@ export const updateAttendanceRecord = mutation({
     // Update enrollment
     await ctx.db.patch(args.enrollmentId, {
       attendance: updatedAttendance,
-      attendanceRate,
+      // attendanceRate field not in schema - calculated from attendance array
       updatedAt: Date.now(),
     });
 
@@ -556,9 +557,15 @@ export const generateAttendanceAlerts = mutation({
     let alertsCreated = 0;
 
     for (const enrollment of enrollments) {
+      // Calculate attendance rate from attendance array
+      const attendanceRate = enrollment.attendance ? 
+        enrollment.attendance.length > 0 ? 
+          (enrollment.attendance.filter((a: any) => a.status === "present").length / enrollment.attendance.length) * 100 
+          : 0 
+        : 0;
+      
       // Check if attendance rate is below threshold (75%) and has sufficient sessions
-      if (enrollment.attendanceRate !== undefined && 
-          enrollment.attendanceRate < 75 && 
+      if (attendanceRate < 75 && 
           enrollment.attendance && 
           enrollment.attendance.length >= 5) {
 
@@ -581,10 +588,10 @@ export const generateAttendanceAlerts = mutation({
             beneficiaryId: enrollment.beneficiaryId,
             ruleId: "attendance_threshold" as Id<"performanceRules">,
             alertType: "attendance_low",
-            severity: enrollment.attendanceRate < 50 ? "critical" : 
-                     enrollment.attendanceRate < 60 ? "high" : "medium",
+            severity: attendanceRate < 50 ? "critical" : 
+                     attendanceRate < 60 ? "high" : "medium",
             title: "Poor Attendance Alert",
-            description: `Attendance rate is ${enrollment.attendanceRate.toFixed(1)}% which is below the 75% threshold`,
+            description: `Attendance rate is ${attendanceRate.toFixed(1)}% which is below the 75% threshold`,
             relatedEntity: "program_enrollment",
             relatedEntityId: enrollment._id,
             status: "active",
@@ -593,6 +600,59 @@ export const generateAttendanceAlerts = mutation({
           });
 
           alertsCreated++;
+
+          // Get beneficiary details for notification
+          const beneficiary = await ctx.db.get(enrollment.beneficiaryId);
+          if (beneficiary) {
+            // Create notification for the beneficiary
+            await ctx.scheduler.runAfter(0, internal.notifications.createSystemNotification, {
+              foundationId: args.foundationId,
+              recipientId: beneficiary.userId,
+              type: "alert",
+              priority: attendanceRate < 50 ? "urgent" : "high",
+              title: "Poor Attendance Alert",
+              message: `Your attendance rate of ${attendanceRate.toFixed(1)}% is below the required 75% minimum. Please improve your attendance.`,
+              actionUrl: `/attendance/dashboard`,
+              actionText: "View Attendance",
+              relatedEntityType: "program_enrollments",
+              relatedEntityId: enrollment._id,
+              metadata: {
+                beneficiaryId: enrollment.beneficiaryId,
+              },
+              channels: ["in_app", "email"],
+            });
+
+            // Also notify foundation admins
+            const admins = await ctx.db
+              .query("users")
+              .withIndex("by_foundation", (q) => q.eq("foundationId", args.foundationId))
+              .filter((q) => 
+                q.or(
+                  q.eq(q.field("role"), "admin"),
+                  q.eq(q.field("role"), "super_admin")
+                )
+              )
+              .collect();
+
+            for (const admin of admins) {
+              await ctx.scheduler.runAfter(0, internal.notifications.createSystemNotification, {
+                foundationId: args.foundationId,
+                recipientId: admin._id,
+                type: "alert",
+                priority: "medium",
+                title: "Student Attendance Alert",
+                message: `Beneficiary ${beneficiary.beneficiaryNumber} has poor attendance rate of ${attendanceRate.toFixed(1)}%`,
+                actionUrl: `/attendance/dashboard`,
+                actionText: "View Attendance",
+                relatedEntityType: "program_enrollments",
+                relatedEntityId: enrollment._id,
+                metadata: {
+                  beneficiaryId: enrollment.beneficiaryId,
+                },
+                channels: ["in_app"],
+              });
+            }
+          }
         }
       }
     }

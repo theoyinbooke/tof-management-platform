@@ -1,6 +1,8 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { authenticateAndAuthorize } from "./auth";
+import type { Id } from "./_generated/dataModel";
+import { internal } from "./_generated/api";
 
 /**
  * Get all academic levels for a foundation (alias for consistency)
@@ -546,7 +548,7 @@ export const getPerformanceAnalytics = query({
     if (args.academicLevelId) {
       const sessionsForLevel = await ctx.db
         .query("academicSessions")
-        .withIndex("by_academic_level", (q) => q.eq("academicLevelId", args.academicLevelId))
+        .withIndex("by_academic_level", (q) => q.eq("academicLevelId", args.academicLevelId!))
         .collect();
       
       const sessionIds = new Set(sessionsForLevel.map(s => s._id));
@@ -626,7 +628,7 @@ export const createPerformanceRecord = mutation({
       .filter((q) => q.eq(q.field("beneficiaryId"), args.beneficiaryId))
       .unique();
 
-    let recordId: v.Id<"performanceRecords">;
+    let recordId: Id<"performanceRecords">;
 
     if (existingRecord) {
       // Update existing record
@@ -739,7 +741,7 @@ export const getPerformanceAlerts = query({
         // Get session info if related to performance record
         let session = null;
         if (alert.relatedEntity === "performance_record" && alert.relatedEntityId) {
-          const performanceRecord = await ctx.db.get(alert.relatedEntityId as v.Id<"performanceRecords">);
+          const performanceRecord = await ctx.db.get(alert.relatedEntityId as Id<"performanceRecords">);
           if (performanceRecord?.academicSessionId) {
             session = await ctx.db.get(performanceRecord.academicSessionId);
           }
@@ -847,10 +849,10 @@ export const getAlertsAnalytics = query({
 
     // Alert types
     const performanceAlerts = alerts.filter(a => 
-      a.alertType === "performance_low" || a.alertType === "grade_drop"
+      a.alertType === "poor_performance"
     ).length;
     const attendanceAlerts = alerts.filter(a => 
-      a.alertType === "attendance_low" || a.alertType === "session_missed"
+      a.alertType === "attendance_low"
     ).length;
 
     return {
@@ -889,9 +891,9 @@ export const resolvePerformanceAlert = mutation({
 
     await ctx.db.patch(args.alertId, {
       status: "resolved",
-      resolutionNotes: args.resolutionNotes,
-      resolvedBy: user._id,
-      resolvedAt: Date.now(),
+      actionTaken: args.resolutionNotes,
+      actionBy: user._id,
+      actionDate: Date.now(),
       updatedAt: Date.now(),
     });
 
@@ -957,8 +959,8 @@ export const generateAcademicAlerts = mutation({
           await ctx.db.insert("performanceAlerts", {
             foundationId: args.foundationId,
             beneficiaryId: record.beneficiaryId,
-            ruleId: "performance_threshold" as v.Id<"performanceRules">,
-            alertType: "performance_low",
+            ruleId: "performance_threshold" as Id<"performanceRules">,
+            alertType: "poor_performance",
             severity,
             title: "Low Academic Performance",
             description: `Overall grade of ${record.overallGrade}% is below the 60% threshold`,
@@ -970,6 +972,59 @@ export const generateAcademicAlerts = mutation({
           });
 
           alertsCreated++;
+
+          // Get beneficiary details for notification
+          const beneficiary = await ctx.db.get(record.beneficiaryId);
+          if (beneficiary) {
+            // Create notification for the beneficiary
+            await ctx.scheduler.runAfter(0, internal.notifications.createSystemNotification, {
+              foundationId: args.foundationId,
+              recipientId: beneficiary.userId,
+              type: "alert",
+              priority: severity === "critical" ? "urgent" : severity === "high" ? "high" : "medium",
+              title: "Academic Performance Alert",
+              message: `Your overall grade of ${record.overallGrade}% is below the expected threshold. Academic support may be needed.`,
+              actionUrl: `/academic/performance?beneficiary=${record.beneficiaryId}`,
+              actionText: "View Performance",
+              relatedEntityType: "performance_alerts",
+              relatedEntityId: alertsCreated.toString(),
+              metadata: {
+                beneficiaryId: record.beneficiaryId,
+              },
+              channels: ["in_app", "email"],
+            });
+
+            // Also notify foundation admins
+            const admins = await ctx.db
+              .query("users")
+              .withIndex("by_foundation", (q) => q.eq("foundationId", args.foundationId))
+              .filter((q) => 
+                q.or(
+                  q.eq(q.field("role"), "admin"),
+                  q.eq(q.field("role"), "super_admin")
+                )
+              )
+              .collect();
+
+            for (const admin of admins) {
+              await ctx.scheduler.runAfter(0, internal.notifications.createSystemNotification, {
+                foundationId: args.foundationId,
+                recipientId: admin._id,
+                type: "alert",
+                priority: "medium",
+                title: "Student Performance Alert",
+                message: `Beneficiary ${beneficiary.beneficiaryNumber} has a low performance grade of ${record.overallGrade}%`,
+                actionUrl: `/academic/alerts`,
+                actionText: "View Alerts",
+                relatedEntityType: "performance_alerts",
+                relatedEntityId: alertsCreated.toString(),
+                metadata: {
+                  beneficiaryId: record.beneficiaryId,
+                },
+                channels: ["in_app"],
+              });
+            }
+          }
         }
       }
 
@@ -991,8 +1046,8 @@ export const generateAcademicAlerts = mutation({
           await ctx.db.insert("performanceAlerts", {
             foundationId: args.foundationId,
             beneficiaryId: record.beneficiaryId,
-            ruleId: "intervention_required" as v.Id<"performanceRules">,
-            alertType: "intervention_needed",
+            ruleId: "intervention_required" as Id<"performanceRules">,
+            alertType: "poor_performance",
             severity: "high",
             title: "Academic Intervention Required",
             description: record.interventionReason || "Student requires academic intervention support",
