@@ -114,9 +114,32 @@ export const storeUser = mutation({
       .unique();
 
     if (invitedUser) {
-      // This is an invited user accepting their invitation
-      // The acceptInvitation mutation should handle this, not the webhook
-      console.log(`User ${args.email} is an invited user, skipping webhook user creation`);
+      // This is an invited user - update their record with Clerk ID
+      console.log(`User ${args.email} is an invited user, updating with Clerk ID ${args.clerkId}`);
+      
+      // Update the invited user with Clerk ID and activate if not already done
+      await ctx.db.patch(invitedUser._id, {
+        clerkId: args.clerkId,
+        firstName: args.firstName || invitedUser.firstName,
+        lastName: args.lastName || invitedUser.lastName,
+        isActive: true, // Ensure user is activated
+        invitationAcceptedAt: invitedUser.invitationAcceptedAt || Date.now(),
+        lastLogin: Date.now(),
+        invitationToken: undefined, // Clear invitation token
+        updatedAt: Date.now(),
+        
+        // Set default communication preferences if not set
+        communicationPreferences: invitedUser.communicationPreferences || {
+          emailNotifications: true,
+          smsNotifications: true,
+          academicAlerts: true,
+          financialAlerts: true,
+          administrativeNotifications: true,
+          marketingCommunications: false,
+        },
+      });
+
+      console.log(`Successfully activated invited user ${args.email} with Clerk ID ${args.clerkId}`);
       return invitedUser._id;
     }
 

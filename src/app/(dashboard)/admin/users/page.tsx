@@ -27,7 +27,8 @@ import {
   Eye,
   MailX,
   RefreshCw,
-  Clock
+  Clock,
+  Ban
 } from "lucide-react";
 import { 
   DropdownMenu,
@@ -41,6 +42,8 @@ import { formatDate } from "@/lib/utils";
 import { InviteUserDialog } from "@/components/users/invite-user-dialog";
 import { EditUserDialog } from "@/components/users/edit-user-dialog";
 import { UserDetailsDialog } from "@/components/users/user-details-dialog";
+import { DeleteUserDialog } from "@/components/admin/delete-user-dialog";
+import { BlockUserDialog } from "@/components/admin/block-user-dialog";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { Id } from "../../../../../convex/_generated/dataModel";
@@ -49,17 +52,24 @@ type UserRole = "super_admin" | "admin" | "reviewer" | "beneficiary" | "guardian
 
 export default function UsersPage() {
   const router = useRouter();
-  const { user } = useCurrentUser();
+  const currentUserData = useCurrentUser();  // Get the entire object with computed properties
+  const currentUser = currentUserData.user;  // Extract the user for backward compatibility
   const [searchTerm, setSearchTerm] = useState("");
   const [roleFilter, setRoleFilter] = useState<UserRole | "all">("all");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
   const [selectedUser, setSelectedUser] = useState<Id<"users"> | null>(null);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
   const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [blockDialogOpen, setBlockDialogOpen] = useState(false);
+  const [selectedUserForAction, setSelectedUserForAction] = useState<any>(null);
 
   // Fetch data
   const users = useQuery(api.admin.getAllUsers);
   const deactivateUser = useMutation(api.admin.deactivateUser);
+  const reactivateUser = useMutation(api.admin.reactivateUser);
+  const blockUser = useMutation(api.admin.blockUser);
+  const deleteUser = useMutation(api.admin.deleteUser);
   const updateUserRole = useMutation(api.admin.updateUserRole);
   const revokeInvitation = useMutation(api.users.revokeInvitation);
   const resendInvitation = useMutation(api.users.resendInvitation);
@@ -88,6 +98,33 @@ export default function UsersPage() {
     }
   };
 
+  const handleReactivateUser = async (userId: Id<"users">, reason?: string) => {
+    try {
+      await reactivateUser({ userId, reason });
+      toast.success("User reactivated successfully");
+    } catch (error: any) {
+      toast.error(error.message || "Failed to reactivate user");
+    }
+  };
+
+  const handleBlockUser = async (userId: Id<"users">, reason: string) => {
+    try {
+      await blockUser({ userId, reason });
+      toast.success("User blocked successfully");
+    } catch (error: any) {
+      toast.error(error.message || "Failed to block user");
+    }
+  };
+
+  const handleDeleteUser = async (userId: Id<"users">, reason: string) => {
+    try {
+      await deleteUser({ userId, reason });
+      toast.success("User deleted successfully");
+    } catch (error: any) {
+      toast.error(error.message || "Failed to delete user");
+    }
+  };
+
   const handleEditUser = (userId: Id<"users">) => {
     setSelectedUser(userId);
     setEditDialogOpen(true);
@@ -98,15 +135,25 @@ export default function UsersPage() {
     setDetailsDialogOpen(true);
   };
 
+  const handleOpenDeleteDialog = (user: any) => {
+    setSelectedUserForAction(user);
+    setDeleteDialogOpen(true);
+  };
+
+  const handleOpenBlockDialog = (user: any) => {
+    setSelectedUserForAction(user);
+    setBlockDialogOpen(true);
+  };
+
   const handleRevokeInvitation = async (userId: Id<"users">) => {
-    if (!user?.foundationId) {
+    if (!currentUser?.foundationId) {
       toast.error("User foundation not found");
       return;
     }
     
     try {
       await revokeInvitation({
-        foundationId: user.foundationId,
+        foundationId: currentUser.foundationId,
         userId: userId,
       });
       toast.success("Invitation revoked successfully");
@@ -116,14 +163,14 @@ export default function UsersPage() {
   };
 
   const handleResendInvitation = async (userId: Id<"users">) => {
-    if (!user?.foundationId) {
+    if (!currentUser?.foundationId) {
       toast.error("User foundation not found");
       return;
     }
     
     try {
       await resendInvitation({
-        foundationId: user.foundationId,
+        foundationId: currentUser.foundationId,
         userId: userId,
       });
       toast.success("Invitation resent successfully");
@@ -132,8 +179,22 @@ export default function UsersPage() {
     }
   };
 
+  // User status detection functions
   const isInvitationPending = (userRecord: any) => {
-    return !userRecord.clerkId && !userRecord.isActive;
+    // True invitation pending: no clerkId, not active, has invitation token
+    return !userRecord.clerkId && !userRecord.isActive && !!userRecord.invitationToken;
+  };
+
+  const isDeactivated = (userRecord: any) => {
+    // Deactivated: has clerkId (completed setup), not active, no invitation token
+    return !!userRecord.clerkId && !userRecord.isActive && !userRecord.invitationToken;
+  };
+
+  const getUserStatus = (userRecord: any) => {
+    if (userRecord.isActive) return "active";
+    if (isInvitationPending(userRecord)) return "invitation_pending";
+    if (isDeactivated(userRecord)) return "deactivated";
+    return "unknown";
   };
 
   const getRoleColor = (role: UserRole) => {
@@ -268,8 +329,17 @@ export default function UsersPage() {
                             {user.role.replace("_", " ").toUpperCase()}
                           </Badge>
                           {!user.isActive && (
-                            <Badge variant="secondary" className="bg-yellow-100 text-yellow-800">
-                              {isInvitationPending(user) ? "Invitation Pending" : "Inactive"}
+                            <Badge 
+                              variant="secondary" 
+                              className={
+                                getUserStatus(user) === "invitation_pending" 
+                                  ? "bg-yellow-100 text-yellow-800"
+                                  : "bg-red-100 text-red-800"
+                              }
+                            >
+                              {getUserStatus(user) === "invitation_pending" 
+                                ? "Invitation Pending" 
+                                : "Deactivated"}
                             </Badge>
                           )}
                         </div>
@@ -329,23 +399,55 @@ export default function UsersPage() {
                             </>
                           )}
                           
-                          {/* Regular user management - only show for activated users */}
+                          {/* Regular user management - only show for users who completed setup */}
                           {!isInvitationPending(user) && (
                             <>
                               <DropdownMenuSeparator />
                               {user.isActive ? (
                                 <DropdownMenuItem 
                                   onClick={() => handleDeactivateUser(user._id)}
-                                  className="text-red-600"
+                                  className="text-orange-600"
                                 >
                                   <ShieldOff className="w-4 h-4 mr-2" />
                                   Deactivate
                                 </DropdownMenuItem>
                               ) : (
-                                <DropdownMenuItem onClick={() => handleDeactivateUser(user._id)}>
+                                <DropdownMenuItem onClick={() => handleReactivateUser(user._id)}>
                                   <Shield className="w-4 h-4 mr-2" />
                                   Reactivate
                                 </DropdownMenuItem>
+                              )}
+                              
+                              {/* Debug: Fixed - using currentUserData for computed properties */}
+                              <div className="text-xs text-green-600 px-2 py-1 border-t">
+                                <div>✅ FIXED Debug Info:</div>
+                                <div>Raw role: {currentUser?.role || 'none'}</div>
+                                <div>isSuperAdmin: {currentUserData?.isSuperAdmin ? 'true' : 'false'}</div>
+                                <div>isAdmin: {currentUserData?.isAdmin ? 'true' : 'false'}</div>
+                              </div>
+                              
+                              {/* Super admin only actions - FIXED */}
+                              {currentUserData?.isSuperAdmin && (
+                                <>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem 
+                                    onClick={() => handleOpenBlockDialog(user)}
+                                    className="text-red-600"
+                                  >
+                                    <Ban className="w-4 h-4 mr-2" />
+                                    Block User
+                                  </DropdownMenuItem>
+                                  
+                                  {user.role !== "super_admin" && (
+                                    <DropdownMenuItem 
+                                      onClick={() => handleOpenDeleteDialog(user)}
+                                      className="text-red-800"
+                                    >
+                                      <Trash2 className="w-4 h-4 mr-2" />
+                                      Delete Permanently
+                                    </DropdownMenuItem>
+                                  )}
+                                </>
                               )}
                             </>
                           )}
@@ -371,6 +473,26 @@ export default function UsersPage() {
               userId={selectedUser}
               open={detailsDialogOpen}
               onOpenChange={setDetailsDialogOpen}
+            />
+          </>
+        )}
+
+        {/* Action Dialogs */}
+        {selectedUserForAction && (
+          <>
+            <BlockUserDialog
+              open={blockDialogOpen}
+              onOpenChange={setBlockDialogOpen}
+              onConfirm={(reason) => handleBlockUser(selectedUserForAction._id, reason)}
+              userName={`${selectedUserForAction.firstName} ${selectedUserForAction.lastName}`}
+              userEmail={selectedUserForAction.email}
+            />
+            <DeleteUserDialog
+              open={deleteDialogOpen}
+              onOpenChange={setDeleteDialogOpen}
+              onConfirm={(reason) => handleDeleteUser(selectedUserForAction._id, reason)}
+              userName={`${selectedUserForAction.firstName} ${selectedUserForAction.lastName}`}
+              userEmail={selectedUserForAction.email}
             />
           </>
         )}

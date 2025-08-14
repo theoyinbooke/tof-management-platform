@@ -1,241 +1,30 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useSignUp, useAuth } from "@clerk/nextjs";
-import { useQuery, useMutation } from "convex/react";
-import { api } from "../../../convex/_generated/api";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { useAuth } from "@clerk/nextjs";
+import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Loader2, CheckCircle, XCircle, UserPlus } from "lucide-react";
-import { toast } from "sonner";
-
-interface InvitationData {
-  user: {
-    _id: string;
-    firstName: string;
-    lastName: string;
-    email: string;
-    role: string;
-  };
-  foundation: {
-    _id: string;
-    name: string;
-  } | null;
-}
+import { Loader2, CheckCircle, Info } from "lucide-react";
 
 function AcceptInvitationContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { isSignedIn } = useAuth();
-  const { signUp, setActive } = useSignUp();
   
-  const token = searchParams.get("token");
-  const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  // Query to validate invitation token
-  const invitationData = useQuery(
-    api.users.validateInvitationToken,
-    token && token.trim() ? { token: token.trim() } : "skip"
-  ) as InvitationData | undefined | null;
-
-  // Mutation to accept invitation
-  const acceptInvitation = useMutation(api.users.acceptInvitation);
+  const invitationAccepted = searchParams.get("invitation-accepted");
 
   // Redirect if already signed in
   useEffect(() => {
     if (isSignedIn) {
       router.push("/dashboard");
+    } else if (invitationAccepted === "true") {
+      // User just completed Clerk signup from invitation, redirect to sign-in
+      router.push("/sign-in");
     }
-  }, [isSignedIn, router]);
+  }, [isSignedIn, invitationAccepted, router]);
 
-  // Handle invitation acceptance
-  const handleAcceptInvitation = async (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    if (!token) {
-      setError("Invalid invitation token");
-      return;
-    }
-
-    if (!password || password.length < 8) {
-      setError("Password must be at least 8 characters long");
-      return;
-    }
-
-    if (password !== confirmPassword) {
-      setError("Passwords do not match");
-      return;
-    }
-
-    if (!invitationData?.user) {
-      setError("Invalid invitation data");
-      return;
-    }
-
-    setIsLoading(true);
-    setError(null);
-
-    try {
-      // Create user account with Clerk
-      if (!signUp) {
-        throw new Error("Sign up not initialized");
-      }
-
-      console.log("Creating sign up with email:", invitationData.user.email);
-      
-      let signUpResult;
-      try {
-        signUpResult = await signUp.create({
-          emailAddress: invitationData.user.email,
-          password: password,
-        });
-      } catch (clerkError) {
-        console.error("Clerk sign up error:", clerkError);
-        throw new Error(`Failed to create account with Clerk: ${clerkError.message || clerkError}`);
-      }
-
-      console.log("SignUp result:", signUpResult);
-      console.log("SignUp result keys:", Object.keys(signUpResult || {}));
-      console.log("SignUp result status:", signUpResult?.status);
-      console.log("SignUp result id:", signUpResult?.id);
-      console.log("SignUp result createdUserId:", signUpResult?.createdUserId);
-
-      if (!signUpResult) {
-        throw new Error("Sign up result is null or undefined");
-      }
-
-      // Check for user ID in different possible properties
-      const userId = signUpResult.createdUserId || signUpResult.id || signUpResult.user?.id;
-      
-      if (!userId) {
-        console.error("No user ID found in signUpResult:", signUpResult);
-        throw new Error(`Failed to get user ID from sign up result. Status: ${signUpResult.status}`);
-      }
-
-      console.log("Using userId:", userId);
-
-      // Update user profile with first and last name
-      if (signUpResult.status === "complete" || signUpResult.status === "missing_requirements") {
-        try {
-          await signUp.update({
-            firstName: invitationData.user.firstName,
-            lastName: invitationData.user.lastName,
-          });
-        } catch (profileError) {
-          console.warn("Could not update profile:", profileError);
-          // Continue with the flow even if profile update fails
-        }
-      }
-
-      // Accept the invitation in our system first
-      await acceptInvitation({
-        token,
-        clerkId: userId,
-      });
-
-      // Then attempt to complete sign-in
-      if (signUpResult.status === "complete" && setActive) {
-        const sessionId = signUpResult.createdSessionId || signUpResult.sessions?.[0]?.id;
-        if (sessionId) {
-          await setActive({ session: sessionId });
-        }
-        
-        toast.success("Welcome! Your account has been activated successfully.");
-        router.push("/dashboard");
-      } else if (signUpResult.status === "missing_requirements") {
-        // Handle email verification
-        toast.success("Account created! Please check your email to verify your account.");
-        // Redirect to verification page or sign-in
-        router.push(`/sign-in?email=${encodeURIComponent(invitationData.user.email)}`);
-      } else {
-        // Unknown status, redirect to sign-in
-        toast.success("Account created! Please sign in to continue.");
-        router.push("/sign-in");
-      }
-    } catch (err) {
-      console.error("Invitation acceptance error:", err);
-      const errorMessage = err instanceof Error ? err.message : "Failed to accept invitation";
-      setError(errorMessage);
-      toast.error(errorMessage);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Loading state
-  if (!token) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-        <Card className="w-full max-w-md">
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-center space-x-2 text-destructive">
-              <XCircle className="h-5 w-5" />
-              <p>Invalid invitation link</p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  // Loading invitation data
-  if (invitationData === undefined) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-        <Card className="w-full max-w-md">
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-center space-x-2">
-              <Loader2 className="h-5 w-5 animate-spin" />
-              <p>Validating invitation...</p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  // Invalid or expired invitation
-  if (invitationData === null) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-        <Card className="w-full max-w-md">
-          <CardContent className="pt-6">
-            <div className="text-center space-y-4">
-              <div className="flex justify-center">
-                <XCircle className="h-12 w-12 text-destructive" />
-              </div>
-              <div>
-                <h2 className="text-xl font-semibold text-gray-900">Invalid Invitation</h2>
-                <p className="text-gray-600 mt-2">
-                  This invitation link is invalid, expired, or has already been used.
-                </p>
-              </div>
-              <Button
-                onClick={() => router.push("/")}
-                variant="outline"
-                className="w-full"
-              >
-                Back to Home
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  // Don't render if user is already signed in
-  if (isSignedIn) {
-    return null;
-  }
-
+  // This page is now just for display while redirecting
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full space-y-8">
@@ -246,115 +35,64 @@ function AcceptInvitationContent() {
             </div>
           </div>
           <h2 className="text-3xl font-bold text-gray-900 mb-2">
-            Accept Invitation
+            Welcome to TheOyinbooke Foundation
           </h2>
-          <p className="text-gray-600">
-            Complete your account setup to join {invitationData.foundation?.name}
-          </p>
         </div>
 
         <Card className="shadow-lg border border-gray-200 rounded-xl">
-          <CardHeader className="pb-4">
-            <div className="flex items-center space-x-3">
-              <div className="p-2 bg-emerald-50 rounded-lg">
-                <UserPlus className="h-5 w-5 text-emerald-600" />
-              </div>
-              <div>
-                <CardTitle className="text-lg">
-                  Welcome, {invitationData.user.firstName}!
-                </CardTitle>
-                <CardDescription>
-                  You've been invited as a {invitationData.user.role.replace('_', ' ')}
-                </CardDescription>
-              </div>
-            </div>
-          </CardHeader>
-          
-          <CardContent className="space-y-6">
-            {/* User Details */}
-            <div className="space-y-3">
-              <div>
-                <Label className="text-sm font-medium text-gray-700">Email</Label>
-                <p className="text-sm text-gray-900 bg-gray-50 p-2 rounded-md">
-                  {invitationData.user.email}
-                </p>
-              </div>
-              <div>
-                <Label className="text-sm font-medium text-gray-700">Role</Label>
-                <p className="text-sm text-gray-900 bg-gray-50 p-2 rounded-md capitalize">
-                  {invitationData.user.role.replace('_', ' ')}
-                </p>
-              </div>
-              <div>
-                <Label className="text-sm font-medium text-gray-700">Organization</Label>
-                <p className="text-sm text-gray-900 bg-gray-50 p-2 rounded-md">
-                  {invitationData.foundation?.name}
-                </p>
-              </div>
-            </div>
-
-            {/* Password Form */}
-            <form onSubmit={handleAcceptInvitation} className="space-y-4">
-              <div>
-                <Label htmlFor="password">Create Password</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Enter your password"
-                  required
-                  minLength={8}
-                  className="mt-1"
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  Password must be at least 8 characters long
-                </p>
-              </div>
-              
-              <div>
-                <Label htmlFor="confirmPassword">Confirm Password</Label>
-                <Input
-                  id="confirmPassword"
-                  type="password"
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  placeholder="Confirm your password"
-                  required
-                  className="mt-1"
-                />
-              </div>
-
-              {error && (
-                <Alert variant="destructive">
-                  <XCircle className="h-4 w-4" />
-                  <AlertDescription>{error}</AlertDescription>
-                </Alert>
+          <CardContent className="pt-6">
+            <div className="text-center space-y-4">
+              {invitationAccepted === "true" ? (
+                <>
+                  <div className="flex justify-center">
+                    <CheckCircle className="h-12 w-12 text-emerald-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900">Account Created Successfully!</h3>
+                    <p className="text-gray-600 mt-2">
+                      Your account has been created. You'll be redirected to sign in shortly.
+                    </p>
+                  </div>
+                  <div className="flex items-center justify-center space-x-2 text-muted-foreground">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <p>Redirecting...</p>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="flex justify-center">
+                    <Info className="h-12 w-12 text-blue-600" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-semibold text-gray-900">Invitation System Updated</h3>
+                    <p className="text-gray-600 mt-2">
+                      Our invitation system has been updated. If you have an invitation link, 
+                      it will redirect you to create your account directly.
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Button
+                      onClick={() => router.push("/sign-up")}
+                      className="w-full bg-primary hover:bg-primary-hover"
+                    >
+                      Create Account
+                    </Button>
+                    <Button
+                      onClick={() => router.push("/sign-in")}
+                      variant="outline"
+                      className="w-full"
+                    >
+                      Sign In
+                    </Button>
+                  </div>
+                </>
               )}
-
-              <Button
-                type="submit"
-                disabled={isLoading || !password || !confirmPassword}
-                className="w-full bg-primary hover:bg-primary-hover"
-              >
-                {isLoading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Creating Account...
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle className="mr-2 h-4 w-4" />
-                    Accept Invitation & Create Account
-                  </>
-                )}
-              </Button>
-            </form>
+            </div>
           </CardContent>
         </Card>
 
         <p className="text-center text-xs text-gray-500">
-          By accepting this invitation, you agree to TheOyinbooke Foundation's terms of service.
+          By using TheOyinbooke Foundation platform, you agree to our terms of service.
         </p>
       </div>
     </div>
@@ -369,7 +107,7 @@ function AcceptInvitationLoading() {
         <CardContent className="pt-6">
           <div className="flex items-center justify-center space-x-2">
             <Loader2 className="h-5 w-5 animate-spin" />
-            <p>Loading invitation...</p>
+            <p>Loading...</p>
           </div>
         </CardContent>
       </Card>

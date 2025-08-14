@@ -157,10 +157,20 @@ export const deactivateUser = mutation({
     if (targetUser._id === currentUser._id) {
       throw new Error("Cannot deactivate your own account");
     }
+
+    // Only deactivate users who are currently active and have completed setup
+    if (!targetUser.isActive) {
+      throw new Error("User is already inactive");
+    }
+
+    if (!targetUser.clerkId || targetUser.clerkId.startsWith("manual_")) {
+      throw new Error("Cannot deactivate user who hasn't completed account setup");
+    }
     
-    // Update user status
+    // Update user status - clear invitation token to distinguish from pending invitations
     await ctx.db.patch(args.userId, {
       isActive: false,
+      invitationToken: undefined, // Clear token to distinguish from pending invitations
       updatedAt: Date.now(),
     });
     
@@ -179,6 +189,170 @@ export const deactivateUser = mutation({
         createdAt: Date.now(),
       });
     }
+    
+    return { success: true };
+  },
+});
+
+/**
+ * Reactivate user (admin only)
+ */
+export const reactivateUser = mutation({
+  args: {
+    userId: v.id("users"),
+    reason: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    // Authenticate as admin
+    const currentUser = await authenticateAndAuthorize(ctx, null, ["super_admin", "admin"]);
+    
+    // Get target user
+    const targetUser = await ctx.db.get(args.userId);
+    if (!targetUser) {
+      throw new Error("User not found");
+    }
+
+    // Only reactivate users who have completed setup (have Clerk ID)
+    if (!targetUser.clerkId || targetUser.clerkId.startsWith("manual_")) {
+      throw new Error("Cannot reactivate user who hasn't completed account setup");
+    }
+
+    if (targetUser.isActive) {
+      throw new Error("User is already active");
+    }
+    
+    // Update user status
+    await ctx.db.patch(args.userId, {
+      isActive: true,
+      updatedAt: Date.now(),
+    });
+    
+    // Create audit log
+    if (currentUser.foundationId) {
+      await ctx.db.insert("auditLogs", {
+        foundationId: currentUser.foundationId,
+        userId: currentUser._id,
+        userEmail: currentUser.email,
+        userRole: currentUser.role,
+        action: "user_reactivated",
+        entityType: "users",
+        entityId: args.userId,
+        description: `Reactivated user account for ${targetUser.firstName} ${targetUser.lastName}${args.reason ? `. Reason: ${args.reason}` : ''}`,
+        riskLevel: "medium",
+        createdAt: Date.now(),
+      });
+    }
+    
+    return { success: true };
+  },
+});
+
+/**
+ * Block user (super admin only) - prevents sign-in but keeps data
+ */
+export const blockUser = mutation({
+  args: {
+    userId: v.id("users"),
+    reason: v.string(),
+  },
+  handler: async (ctx, args) => {
+    // Only super admins can block users
+    const currentUser = await authenticateAndAuthorize(ctx, null, ["super_admin"]);
+    
+    // Get target user
+    const targetUser = await ctx.db.get(args.userId);
+    if (!targetUser) {
+      throw new Error("User not found");
+    }
+    
+    // Cannot block self
+    if (targetUser._id === currentUser._id) {
+      throw new Error("Cannot block your own account");
+    }
+
+    // Cannot block other super admins unless you're also super admin
+    if (targetUser.role === "super_admin" && currentUser.role !== "super_admin") {
+      throw new Error("Cannot block super admin");
+    }
+    
+    // Update user status - blocked users are inactive with no invitation token
+    await ctx.db.patch(args.userId, {
+      isActive: false,
+      invitationToken: undefined,
+      updatedAt: Date.now(),
+    });
+    
+    // Create audit log
+    if (currentUser.foundationId) {
+      await ctx.db.insert("auditLogs", {
+        foundationId: currentUser.foundationId,
+        userId: currentUser._id,
+        userEmail: currentUser.email,
+        userRole: currentUser.role,
+        action: "user_blocked",
+        entityType: "users",
+        entityId: args.userId,
+        description: `Blocked user account for ${targetUser.firstName} ${targetUser.lastName}. Reason: ${args.reason}`,
+        riskLevel: "high",
+        createdAt: Date.now(),
+      });
+    }
+    
+    return { success: true };
+  },
+});
+
+/**
+ * Delete user permanently (super admin only)
+ */
+export const deleteUser = mutation({
+  args: {
+    userId: v.id("users"),
+    reason: v.string(),
+  },
+  handler: async (ctx, args) => {
+    // Only super admins can delete users
+    const currentUser = await authenticateAndAuthorize(ctx, null, ["super_admin"]);
+    
+    // Get target user
+    const targetUser = await ctx.db.get(args.userId);
+    if (!targetUser) {
+      throw new Error("User not found");
+    }
+    
+    // Cannot delete self
+    if (targetUser._id === currentUser._id) {
+      throw new Error("Cannot delete your own account");
+    }
+
+    // Cannot delete other super admins
+    if (targetUser.role === "super_admin") {
+      throw new Error("Cannot delete super admin accounts");
+    }
+
+    // Create final audit log before deletion
+    if (currentUser.foundationId) {
+      await ctx.db.insert("auditLogs", {
+        foundationId: currentUser.foundationId,
+        userId: currentUser._id,
+        userEmail: currentUser.email,
+        userRole: currentUser.role,
+        action: "user_deleted",
+        entityType: "users",
+        entityId: args.userId,
+        description: `Permanently deleted user account for ${targetUser.firstName} ${targetUser.lastName} (${targetUser.email}). Reason: ${args.reason}`,
+        riskLevel: "critical",
+        createdAt: Date.now(),
+      });
+    }
+    
+    // TODO: In a production system, you might want to:
+    // 1. Anonymize related data instead of deleting
+    // 2. Move to a "deleted_users" table for compliance
+    // 3. Handle cascading deletes for related entities
+    
+    // Delete the user
+    await ctx.db.delete(args.userId);
     
     return { success: true };
   },

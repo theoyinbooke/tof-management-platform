@@ -28,8 +28,8 @@ import { formatDistanceToNow } from "date-fns";
 
 export function IncompleteInvitations() {
   const { user } = useCurrentUser();
-  const incompleteInvitations = useQuery(
-    api.users.getIncompleteInvitations,
+  const pendingInvitations = useQuery(
+    api.users.getPendingInvitations,
     user?.foundationId ? { foundationId: user.foundationId } : "skip"
   );
   const resendInvitation = useMutation(api.users.resendInvitation);
@@ -39,13 +39,13 @@ export function IncompleteInvitations() {
     return null;
   }
 
-  const handleResendInvitation = async (userId: string) => {
+  const handleResendInvitation = async (pendingInvitationId: string) => {
     if (!user.foundationId) return;
     
     try {
       await resendInvitation({
         foundationId: user.foundationId,
-        userId: userId as any,
+        pendingInvitationId: pendingInvitationId as any,
       });
       toast.success("Invitation resent successfully");
     } catch (error) {
@@ -54,13 +54,13 @@ export function IncompleteInvitations() {
     }
   };
 
-  const handleRevokeInvitation = async (userId: string) => {
+  const handleRevokeInvitation = async (pendingInvitationId: string) => {
     if (!user.foundationId) return;
     
     try {
       await revokeInvitation({
         foundationId: user.foundationId,
-        userId: userId as any,
+        pendingInvitationId: pendingInvitationId as any,
       });
       toast.success("Invitation revoked successfully");
     } catch (error) {
@@ -72,14 +72,11 @@ export function IncompleteInvitations() {
   const getInvitationStatus = (invitation: any) => {
     const now = Date.now();
     
-    if (invitation.invitationExpiresAt && invitation.invitationExpiresAt < now) {
-      return { status: "expired", variant: "destructive" as const };
-    }
-    
+    // For Clerk invitations, they expire after 7 days by default
     const daysSinceInvitation = Math.floor((now - invitation.invitationSentAt) / (1000 * 60 * 60 * 24));
     
     if (daysSinceInvitation > 7) {
-      return { status: "overdue", variant: "destructive" as const };
+      return { status: "expired", variant: "destructive" as const };
     } else if (daysSinceInvitation > 3) {
       return { status: "pending", variant: "secondary" as const };
     }
@@ -87,7 +84,7 @@ export function IncompleteInvitations() {
     return { status: "recent", variant: "default" as const };
   };
 
-  if (incompleteInvitations === undefined) {
+  if (pendingInvitations === undefined) {
     return (
       <Card>
         <CardContent className="pt-6">
@@ -99,7 +96,7 @@ export function IncompleteInvitations() {
     );
   }
 
-  if (!incompleteInvitations || incompleteInvitations.length === 0) {
+  if (!pendingInvitations || pendingInvitations.length === 0) {
     return (
       <Card>
         <CardHeader>
@@ -128,19 +125,19 @@ export function IncompleteInvitations() {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <AlertTriangle className="w-5 h-5 text-amber-500" />
-          Incomplete Invitations ({incompleteInvitations.length})
+          Pending Invitations ({pendingInvitations.length})
         </CardTitle>
         <CardDescription>
-          Users who were invited but haven't completed their account setup. 
-          They cannot sign in until they complete the invitation process.
+          Users who have been invited via Clerk but haven't accepted their invitation yet. 
+          They will receive an email from Clerk with instructions to set up their account.
         </CardDescription>
       </CardHeader>
       <CardContent>
         <Alert className="mb-6">
           <AlertTriangle className="h-4 w-4" />
           <AlertDescription>
-            <strong>Authentication Issue:</strong> These users have records in your system but no Clerk accounts. 
-            If they try to sign in, it will fail. They need to complete their invitation or have it resent.
+            <strong>Pending Clerk Invitations:</strong> These users have been sent invitations through Clerk's system. 
+            They will receive an email with a link to create their account and join your foundation.
           </AlertDescription>
         </Alert>
 
@@ -156,7 +153,7 @@ export function IncompleteInvitations() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {incompleteInvitations.map((invitation) => {
+              {pendingInvitations.map((invitation) => {
                 const statusInfo = getInvitationStatus(invitation);
                 
                 return (
@@ -176,8 +173,17 @@ export function IncompleteInvitations() {
                         {invitation.role.replace("_", " ")}
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {formatDistanceToNow(invitation.invitationSentAt, { addSuffix: true })}
+                    <TableCell>
+                      <div className="text-sm">
+                        <div className="text-muted-foreground">
+                          {formatDistanceToNow(invitation.invitationSentAt, { addSuffix: true })}
+                        </div>
+                        {invitation.invitedBy && (
+                          <div className="text-xs text-muted-foreground">
+                            by {invitation.invitedBy}
+                          </div>
+                        )}
+                      </div>
                     </TableCell>
                     <TableCell>
                       <Badge variant={statusInfo.variant}>

@@ -1883,4 +1883,33 @@ export default defineSchema({
   }).index("by_conversation", ["conversationId"])
     .index("by_foundation", ["foundationId"])
     .index("by_sender", ["senderId"]),
+
+  // Pending invitations tracking (for Clerk invitations)
+  pendingInvitations: defineTable({
+    clerkInvitationId: v.string(), // Clerk invitation ID
+    foundationId: v.id("foundations"),
+    email: v.string(),
+    firstName: v.string(),
+    lastName: v.string(),
+    role: v.union(
+      v.literal("admin"),
+      v.literal("reviewer"),
+      v.literal("beneficiary"),
+      v.literal("guardian")
+    ),
+    invitedBy: v.id("users"),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("accepted"),
+      v.literal("expired"),
+      v.literal("revoked")
+    ),
+    acceptedAt: v.optional(v.number()),
+    createdUserId: v.optional(v.id("users")), // Set when user accepts invitation
+    createdAt: v.number(),
+    updatedAt: v.number()
+  }).index("by_foundation", ["foundationId"])
+    .index("by_clerk_invitation", ["clerkInvitationId"])
+    .index("by_email", ["email"])
+    .index("by_status", ["foundationId", "status"]),
 });

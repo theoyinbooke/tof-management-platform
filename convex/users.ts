@@ -4,95 +4,6 @@ import { authenticateAndAuthorize } from "./auth";
 import { internal } from "./_generated/api";
 
 /**
- * Generate invitation email content
- */
-function generateInvitationEmailContent(data: {
-  inviteeName: string;
-  inviterName: string;
-  role: string;
-  foundationName: string;
-  signUpUrl: string;
-  expiresInDays?: number;
-}): string {
-  return `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-      <div style="background-color: #16a34a; color: white; padding: 20px; text-align: center;">
-        <h1>You're Invited!</h1>
-        <p>TheOyinbooke Foundation Management Platform</p>
-      </div>
-      
-      <div style="padding: 30px; background-color: #f9fafb;">
-        <h2>Dear ${data.inviteeName},</h2>
-        
-        <p><strong>${data.inviterName}</strong> has invited you to join <strong>${data.foundationName}</strong> as a <strong>${data.role}</strong>.</p>
-        
-        <div style="background-color: white; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #16a34a;">
-          <h3 style="margin-top: 0; color: #16a34a;">Your Role: ${data.role.replace('_', ' ').toUpperCase()}</h3>
-          <p>You'll have access to the foundation's management platform where you can:</p>
-          <ul style="margin: 10px 0; padding-left: 20px;">
-            ${data.role === 'admin' ? `
-              <li>Manage beneficiaries and applications</li>
-              <li>Review financial records</li>
-              <li>Oversee programs and activities</li>
-              <li>Generate reports and analytics</li>
-            ` : data.role === 'reviewer' ? `
-              <li>Review scholarship applications</li>
-              <li>Evaluate beneficiary documents</li>
-              <li>Provide assessment feedback</li>
-              <li>Track review progress</li>
-            ` : data.role === 'beneficiary' ? `
-              <li>Access your student portal</li>
-              <li>View financial support details</li>
-              <li>Track academic progress</li>
-              <li>Participate in programs</li>
-            ` : data.role === 'guardian' ? `
-              <li>Monitor your child's progress</li>
-              <li>View financial statements</li>
-              <li>Communicate with foundation staff</li>
-              <li>Access important updates</li>
-            ` : `
-              <li>Access the foundation platform</li>
-              <li>Collaborate with the team</li>
-              <li>Contribute to the mission</li>
-            `}
-          </ul>
-        </div>
-        
-        <div style="text-align: center; margin: 30px 0;">
-          <a href="${data.signUpUrl}" style="background-color: #16a34a; color: white; padding: 15px 30px; text-decoration: none; border-radius: 8px; display: inline-block; font-size: 16px; font-weight: bold;">
-            Accept Invitation & Sign Up
-          </a>
-        </div>
-        
-        <div style="background-color: #fef3c7; border: 1px solid #f59e0b; border-radius: 8px; padding: 15px; margin: 20px 0;">
-          <p style="margin: 0; color: #92400e; font-size: 14px;">
-            <strong>⏰ Important:</strong> This invitation ${data.expiresInDays ? `expires in ${data.expiresInDays} days` : 'expires soon'}. Please accept it as soon as possible.
-          </p>
-        </div>
-        
-        <p style="font-size: 14px; color: #6b7280;">
-          If you have any questions about this invitation or need assistance with the sign-up process, please don't hesitate to contact us.
-        </p>
-        
-        <p>We look forward to having you as part of our team!</p>
-        
-        <p>Best regards,<br>
-        <strong>${data.inviterName}</strong><br>
-        ${data.foundationName}</p>
-      </div>
-      
-      <div style="background-color: #374151; color: white; padding: 20px; text-align: center; font-size: 12px;">
-        <p>© 2024 TheOyinbooke Foundation. All rights reserved.</p>
-        <p>If you did not expect this invitation, you can safely ignore this email.</p>
-        <p style="margin-top: 10px; color: #9ca3af;">
-          Invitation link: <span style="font-family: monospace; font-size: 11px;">${data.signUpUrl}</span>
-        </p>
-      </div>
-    </div>
-  `;
-}
-
-/**
  * Get all users for a foundation (admin only)
  */
 export const getByFoundation = query({
@@ -453,7 +364,7 @@ export const getStatistics = query({
 });
 
 /**
- * Create user invitation
+ * Create user invitation using Clerk's invitation system
  */
 export const createInvitation = mutation({
   args: {
@@ -496,42 +407,7 @@ export const createInvitation = mutation({
       throw new Error("A user with this email already exists in another foundation");
     }
     
-    // Create invitation record (you might want to add an invitations table)
-    // Generate secure invitation token
-    const invitationToken = crypto.randomUUID();
-    const invitationExpiresAt = Date.now() + (7 * 24 * 60 * 60 * 1000); // 7 days from now
-    
-    // Create pending user record with invitation token
-    const userId = await ctx.db.insert("users", {
-      clerkId: "", // Will be filled when they accept invitation
-      foundationId: args.foundationId,
-      email: args.email,
-      firstName: args.firstName,
-      lastName: args.lastName,
-      role: args.role,
-      isActive: false, // Inactive until they accept invitation
-      invitationToken,
-      invitationExpiresAt,
-      invitedBy: args.invitedBy,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    });
-    
-    // Create audit log
-    await ctx.db.insert("auditLogs", {
-      foundationId: args.foundationId,
-      userId: currentUser._id,
-      userEmail: currentUser.email,
-      userRole: currentUser.role,
-      action: "user_invited",
-      entityType: "users",
-      entityId: userId,
-      description: `Invited ${args.firstName} ${args.lastName} (${args.email}) as ${args.role}`,
-      riskLevel: args.role === "admin" ? "high" : "low",
-      createdAt: Date.now(),
-    });
-    
-    // Get foundation details for email
+    // Get foundation details for the invitation
     const foundation = await ctx.db.get(args.foundationId);
     if (!foundation) {
       throw new Error("Foundation not found");
@@ -543,76 +419,131 @@ export const createInvitation = mutation({
       throw new Error("Inviter not found");
     }
     
-    // Send invitation email
-    console.log(`Attempting to send invitation email to ${args.email} for foundation ${foundation.name}`);
+    // Create invitation using Clerk's Backend API
+    console.log(`Creating Clerk invitation for ${args.email}...`);
     
     try {
-      const emailContent = generateInvitationEmailContent({
-        inviteeName: `${args.firstName} ${args.lastName}`,
-        inviterName: `${inviter.firstName} ${inviter.lastName}`,
-        role: args.role,
-        foundationName: foundation.name,
-        signUpUrl: `${process.env.SITE_URL || 'https://theoyinbookefoundation.com'}/accept-invitation?token=${invitationToken}`,
-        expiresInDays: 7,
+      // Import Clerk client dynamically to avoid issues
+      const { createClerkClient } = await import('@clerk/backend');
+      
+      const clerkClient = createClerkClient({
+        secretKey: process.env.CLERK_SECRET_KEY!,
+        publishableKey: process.env.CLERK_PUBLISHABLE_KEY!,
       });
       
-      console.log(`Generated email content for ${args.email}, scheduling email send...`);
-      
-      await ctx.scheduler.runAfter(0, internal.communications.sendEmail, {
-        foundationId: args.foundationId,
-        to: args.email,
-        subject: `You're invited to join ${foundation.name}`,
-        content: emailContent,
-        priority: "normal",
-        templateData: {
-          inviteeName: `${args.firstName} ${args.lastName}`,
-          inviterName: `${inviter.firstName} ${inviter.lastName}`,
+      // Create the invitation through Clerk
+      const invitation = await clerkClient.invitations.createInvitation({
+        emailAddress: args.email,
+        redirectUrl: `${process.env.SITE_URL || 'https://theoyinbookefoundation.com'}/sign-up?invitation-accepted=true`,
+        publicMetadata: {
+          foundationId: args.foundationId,
           role: args.role,
-          foundationName: foundation.name,
+          firstName: args.firstName,
+          lastName: args.lastName,
+          invitedBy: args.invitedBy,
         },
+        notify: true, // Let Clerk send the invitation email
       });
       
-      console.log(`Invitation email scheduled successfully for ${args.email} (role: ${args.role})`);
+      console.log(`Clerk invitation created with ID: ${invitation.id}`);
+      
+      // Store pending invitation record for tracking
+      const pendingInvitationId = await ctx.db.insert("pendingInvitations", {
+        clerkInvitationId: invitation.id,
+        foundationId: args.foundationId,
+        email: args.email,
+        firstName: args.firstName,
+        lastName: args.lastName,
+        role: args.role,
+        invitedBy: args.invitedBy,
+        status: "pending",
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+      
+      // Create audit log
+      await ctx.db.insert("auditLogs", {
+        foundationId: args.foundationId,
+        userId: currentUser._id,
+        userEmail: currentUser.email,
+        userRole: currentUser.role,
+        action: "user_invited",
+        entityType: "pendingInvitations",
+        entityId: pendingInvitationId,
+        description: `Invited ${args.firstName} ${args.lastName} (${args.email}) as ${args.role} via Clerk`,
+        riskLevel: args.role === "admin" ? "high" : "low",
+        createdAt: Date.now(),
+      });
+      
+      console.log(`Invitation created successfully for ${args.email} (role: ${args.role})`);
+      
+      return { 
+        success: true, 
+        clerkInvitationId: invitation.id,
+        pendingInvitationId 
+      };
     } catch (error) {
-      console.error(`Failed to send invitation email to ${args.email}:`, error);
-      // Don't throw error - user record is already created
+      console.error(`Failed to create Clerk invitation for ${args.email}:`, error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      throw new Error(`Failed to create invitation: ${errorMessage}`);
     }
-    
-    return { success: true, userId };
   },
 });
 
 /**
- * Revoke user invitation
+ * Revoke user invitation using Clerk's system
  */
 export const revokeInvitation = mutation({
   args: {
     foundationId: v.id("foundations"),
-    userId: v.id("users"),
+    pendingInvitationId: v.id("pendingInvitations"),
   },
   handler: async (ctx, args) => {
     const currentUser = await authenticateAndAuthorize(ctx, args.foundationId, ["admin", "super_admin"]);
     
-    // Get the user record to revoke
-    const userToRevoke = await ctx.db.get(args.userId);
-    if (!userToRevoke) {
-      throw new Error("User not found");
+    // Get the pending invitation record
+    const pendingInvitation = await ctx.db.get(args.pendingInvitationId);
+    if (!pendingInvitation) {
+      throw new Error("Pending invitation not found");
     }
     
-    // Check if user belongs to the same foundation
-    if (userToRevoke.foundationId !== args.foundationId) {
-      throw new Error("User does not belong to this foundation");
+    // Check if invitation belongs to the same foundation
+    if (pendingInvitation.foundationId !== args.foundationId) {
+      throw new Error("Invitation does not belong to this foundation");
     }
     
-    // Check if this is actually an invitation (user has no clerkId and is inactive)
-    if (userToRevoke.clerkId || userToRevoke.isActive) {
-      throw new Error("Cannot revoke invitation - user has already activated their account");
+    // Check if invitation is still pending
+    if (pendingInvitation.status !== "pending") {
+      throw new Error("Can only revoke pending invitations");
     }
     
-    // Delete the user record (this revokes the invitation)
-    await ctx.db.delete(args.userId);
+    try {
+      // Revoke the invitation in Clerk
+      const { createClerkClient } = await import('@clerk/backend');
+      
+      const clerkClient = createClerkClient({
+        secretKey: process.env.CLERK_SECRET_KEY!,
+        publishableKey: process.env.CLERK_PUBLISHABLE_KEY!,
+      });
+      
+      await clerkClient.invitations.revokeInvitation(
+        pendingInvitation.clerkInvitationId
+      );
+      
+      console.log(`Clerk invitation ${pendingInvitation.clerkInvitationId} revoked`);
+      
+    } catch (clerkError) {
+      console.error(`Failed to revoke Clerk invitation ${pendingInvitation.clerkInvitationId}:`, clerkError);
+      // Continue anyway - update our local record
+    }
     
-    console.log(`Invitation revoked: Deleted user record for ${userToRevoke.email} (ID: ${args.userId})`);
+    // Update the pending invitation status
+    await ctx.db.patch(args.pendingInvitationId, {
+      status: "revoked",
+      updatedAt: Date.now(),
+    });
+    
+    console.log(`Invitation revoked for ${pendingInvitation.email}`);
     
     // Create audit log
     await ctx.db.insert("auditLogs", {
@@ -621,9 +552,9 @@ export const revokeInvitation = mutation({
       userEmail: currentUser.email,
       userRole: currentUser.role,
       action: "invitation_revoked",
-      entityType: "users",
-      entityId: args.userId,
-      description: `Revoked invitation for ${userToRevoke.firstName} ${userToRevoke.lastName} (${userToRevoke.email})`,
+      entityType: "pendingInvitations",
+      entityId: args.pendingInvitationId,
+      description: `Revoked invitation for ${pendingInvitation.firstName} ${pendingInvitation.lastName} (${pendingInvitation.email})`,
       riskLevel: "medium",
       createdAt: Date.now(),
     });
@@ -633,78 +564,84 @@ export const revokeInvitation = mutation({
 });
 
 /**
- * Resend user invitation
+ * Resend user invitation - create a new Clerk invitation
  */
 export const resendInvitation = mutation({
   args: {
     foundationId: v.id("foundations"),
-    userId: v.id("users"),
+    pendingInvitationId: v.id("pendingInvitations"),
   },
   handler: async (ctx, args) => {
     const currentUser = await authenticateAndAuthorize(ctx, args.foundationId, ["admin", "super_admin"]);
     
-    // Get the user record to resend invitation to
-    const userToResend = await ctx.db.get(args.userId);
-    if (!userToResend) {
-      throw new Error("User not found");
+    // Get the pending invitation record
+    const pendingInvitation = await ctx.db.get(args.pendingInvitationId);
+    if (!pendingInvitation) {
+      throw new Error("Pending invitation not found");
     }
     
-    // Check if user belongs to the same foundation
-    if (userToResend.foundationId !== args.foundationId) {
-      throw new Error("User does not belong to this foundation");
+    // Check if invitation belongs to the same foundation
+    if (pendingInvitation.foundationId !== args.foundationId) {
+      throw new Error("Invitation does not belong to this foundation");
     }
     
-    // Check if this is actually an invitation (user has no clerkId and is inactive)
-    if (userToResend.clerkId || userToResend.isActive) {
-      throw new Error("Cannot resend invitation - user has already activated their account");
+    // Check if invitation is still pending
+    if (pendingInvitation.status !== "pending") {
+      throw new Error("Can only resend pending invitations");
     }
     
-    // Generate new invitation token and extend expiration
-    const newInvitationToken = crypto.randomUUID();
-    const newExpiresAt = Date.now() + (7 * 24 * 60 * 60 * 1000); // 7 days from now
-    
-    // Update user with new token
-    await ctx.db.patch(args.userId, {
-      invitationToken: newInvitationToken,
-      invitationExpiresAt: newExpiresAt,
-      updatedAt: Date.now(),
-    });
-    
-    // Get foundation details for email
+    // Get foundation details
     const foundation = await ctx.db.get(args.foundationId);
     if (!foundation) {
       throw new Error("Foundation not found");
     }
     
-    // Get inviter details (current user)
-    const inviter = currentUser;
-    
-    // Resend invitation email
     try {
-      await ctx.scheduler.runAfter(0, internal.communications.sendEmail, {
-        foundationId: args.foundationId,
-        to: userToResend.email,
-        subject: `You're invited to join ${foundation.name} (Resent)`,
-        content: generateInvitationEmailContent({
-          inviteeName: `${userToResend.firstName} ${userToResend.lastName}`,
-          inviterName: `${inviter.firstName} ${inviter.lastName}`,
-          role: userToResend.role,
-          foundationName: foundation.name,
-          signUpUrl: `${process.env.SITE_URL || 'https://theoyinbookefoundation.com'}/accept-invitation?token=${newInvitationToken}`,
-          expiresInDays: 7,
-        }),
-        templateData: {
-          inviteeName: `${userToResend.firstName} ${userToResend.lastName}`,
-          inviterName: `${inviter.firstName} ${inviter.lastName}`,
-          role: userToResend.role,
-          foundationName: foundation.name,
-        },
+      // Create a new Clerk invitation (since you can't resend the same one)
+      const { createClerkClient } = await import('@clerk/backend');
+      
+      const clerkClient = createClerkClient({
+        secretKey: process.env.CLERK_SECRET_KEY!,
+        publishableKey: process.env.CLERK_PUBLISHABLE_KEY!,
       });
       
-      console.log(`Invitation email resent to ${userToResend.email} for role ${userToResend.role}`);
+      // First revoke the old invitation
+      try {
+        await clerkClient.invitations.revokeInvitation(
+          pendingInvitation.clerkInvitationId
+        );
+      } catch (revokeError) {
+        console.warn(`Failed to revoke old invitation (might be expired):`, revokeError);
+      }
+      
+      // Create a new invitation
+      const newInvitation = await clerkClient.invitations.createInvitation({
+        emailAddress: pendingInvitation.email,
+        redirectUrl: `${process.env.SITE_URL || 'https://theoyinbookefoundation.com'}/sign-up?invitation-accepted=true`,
+        publicMetadata: {
+          foundationId: pendingInvitation.foundationId,
+          role: pendingInvitation.role,
+          firstName: pendingInvitation.firstName,
+          lastName: pendingInvitation.lastName,
+          invitedBy: pendingInvitation.invitedBy,
+        },
+        notify: true, // Let Clerk send the invitation email
+      });
+      
+      console.log(`New Clerk invitation created with ID: ${newInvitation.id}`);
+      
+      // Update the pending invitation with new Clerk ID
+      await ctx.db.patch(args.pendingInvitationId, {
+        clerkInvitationId: newInvitation.id,
+        updatedAt: Date.now(),
+      });
+      
+      console.log(`Invitation resent to ${pendingInvitation.email}`);
+      
     } catch (error) {
-      console.error(`Failed to resend invitation email to ${userToResend.email}:`, error);
-      throw new Error("Failed to resend invitation email");
+      console.error(`Failed to resend Clerk invitation for ${pendingInvitation.email}:`, error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+      throw new Error(`Failed to resend invitation: ${errorMessage}`);
     }
     
     // Create audit log
@@ -714,9 +651,9 @@ export const resendInvitation = mutation({
       userEmail: currentUser.email,
       userRole: currentUser.role,
       action: "invitation_resent",
-      entityType: "users",
-      entityId: args.userId,
-      description: `Resent invitation to ${userToResend.firstName} ${userToResend.lastName} (${userToResend.email})`,
+      entityType: "pendingInvitations",
+      entityId: args.pendingInvitationId,
+      description: `Resent invitation to ${pendingInvitation.firstName} ${pendingInvitation.lastName} (${pendingInvitation.email})`,
       riskLevel: "low",
       createdAt: Date.now(),
     });
@@ -726,216 +663,113 @@ export const resendInvitation = mutation({
 });
 
 /**
- * Get all users with incomplete invitations (have invitation token but no Clerk account)
+ * Get all pending invitations
  */
-export const getIncompleteInvitations = query({
+export const getPendingInvitations = query({
   args: {
     foundationId: v.id("foundations"),
   },
   handler: async (ctx, args) => {
     const currentUser = await authenticateAndAuthorize(ctx, args.foundationId, ["admin", "super_admin"]);
 
-    // Find users who have invitation tokens but no Clerk ID (incomplete registrations)
-    const incompleteUsers = await ctx.db
-      .query("users")
-      .withIndex("by_foundation", (q) => q.eq("foundationId", args.foundationId))
-      .filter((q) => 
-        q.and(
-          q.eq(q.field("isActive"), false),
-          q.eq(q.field("clerkId"), ""),
-          q.neq(q.field("invitationToken"), undefined)
-        )
+    // Get pending invitations
+    const pendingInvitations = await ctx.db
+      .query("pendingInvitations")
+      .withIndex("by_status", (q) => 
+        q.eq("foundationId", args.foundationId).eq("status", "pending")
       )
       .collect();
 
-    return incompleteUsers.map(user => ({
+    // Get inviter details for each invitation
+    const invitationsWithInviter = await Promise.all(
+      pendingInvitations.map(async (invitation) => {
+        const inviter = await ctx.db.get(invitation.invitedBy);
+        return {
+          _id: invitation._id,
+          clerkInvitationId: invitation.clerkInvitationId,
+          email: invitation.email,
+          firstName: invitation.firstName,
+          lastName: invitation.lastName,
+          role: invitation.role,
+          status: invitation.status,
+          invitedBy: inviter ? `${inviter.firstName} ${inviter.lastName}` : 'Unknown',
+          invitationSentAt: invitation.createdAt,
+          updatedAt: invitation.updatedAt,
+        };
+      })
+    );
+
+    // Sort by creation date (newest first)
+    invitationsWithInviter.sort((a, b) => b.invitationSentAt - a.invitationSentAt);
+
+    return invitationsWithInviter;
+  },
+});
+
+/**
+ * Debug: Get user status by email (for troubleshooting)
+ */
+export const debugUserStatus = query({
+  args: {
+    email: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const users = await ctx.db
+      .query("users")
+      .withIndex("by_email", (q) => q.eq("email", args.email.toLowerCase()))
+      .collect();
+
+    return users.map(user => ({
       _id: user._id,
       email: user.email,
       firstName: user.firstName,
       lastName: user.lastName,
       role: user.role,
-      invitationSentAt: user.createdAt,
-      invitationExpiresAt: user.invitationExpiresAt,
-      invitationToken: user.invitationToken,
+      isActive: user.isActive,
+      clerkId: user.clerkId ? "***set***" : "empty",
+      createdAt: user.createdAt,
+      updatedAt: user.updatedAt,
     }));
   },
 });
 
 /**
- * Check if an email has a pending invitation (for sign-in error handling)
+ * Check if an email has a pending Clerk invitation (for sign-in error handling)
  */
 export const checkPendingInvitation = query({
   args: {
     email: v.string(),
   },
   handler: async (ctx, args) => {
-    // Find user with this email who has an incomplete invitation
-    const pendingUser = await ctx.db
-      .query("users")
+    // Find pending Clerk invitation with this email
+    const pendingInvitation = await ctx.db
+      .query("pendingInvitations")
       .withIndex("by_email", (q) => q.eq("email", args.email.toLowerCase()))
-      .filter((q) => 
-        q.and(
-          q.eq(q.field("isActive"), false),
-          q.eq(q.field("clerkId"), ""),
-          q.neq(q.field("invitationToken"), undefined)
-        )
-      )
+      .filter((q) => q.eq(q.field("status"), "pending"))
       .unique();
 
-    if (!pendingUser) {
+    if (!pendingInvitation) {
       return null;
     }
 
-    // Check if invitation has expired
-    const isExpired = pendingUser.invitationExpiresAt && pendingUser.invitationExpiresAt < Date.now();
+    // Check if invitation has expired (Clerk invitations expire after 7 days)
+    const daysSinceInvitation = Math.floor((Date.now() - pendingInvitation.createdAt) / (1000 * 60 * 60 * 24));
+    const isExpired = daysSinceInvitation > 7;
+
+    const foundation = await ctx.db.get(pendingInvitation.foundationId);
 
     return {
       hasPendingInvitation: true,
       isExpired,
-      firstName: pendingUser.firstName,
-      lastName: pendingUser.lastName,
-      role: pendingUser.role,
-      foundationName: pendingUser.foundationId ? 
-        (await ctx.db.get(pendingUser.foundationId))?.name : null,
-      // Don't return the actual token for security
+      firstName: pendingInvitation.firstName,
+      lastName: pendingInvitation.lastName,
+      role: pendingInvitation.role,
+      foundationName: foundation?.name || null,
     };
   },
 });
 
-/**
- * Validate invitation token and get user details
- */
-export const validateInvitationToken = query({
-  args: {
-    token: v.string(),
-  },
-  handler: async (ctx, args) => {
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_invitation_token", (q) => q.eq("invitationToken", args.token))
-      .unique();
 
-    if (!user) {
-      return null; // Return null instead of throwing error
-    }
-
-    // Check if token is expired
-    if (user.invitationExpiresAt && user.invitationExpiresAt < Date.now()) {
-      return null; // Return null instead of throwing error
-    }
-
-    // Check if invitation was already accepted
-    if (user.invitationAcceptedAt) {
-      return null; // Return null instead of throwing error
-    }
-
-    // Check if user is already active
-    if (user.isActive && user.clerkId) {
-      return null; // Return null instead of throwing error
-    }
-
-    // Get foundation details
-    const foundation = await ctx.db.get(user.foundationId!);
-    
-    return {
-      user: {
-        _id: user._id,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        email: user.email,
-        role: user.role,
-      },
-      foundation: foundation ? {
-        _id: foundation._id,
-        name: foundation.name,
-      } : null,
-    };
-  },
-});
-
-/**
- * Accept invitation and activate account
- */
-export const acceptInvitation = mutation({
-  args: {
-    token: v.string(),
-    clerkId: v.string(),
-  },
-  handler: async (ctx, args) => {
-    const user = await ctx.db
-      .query("users")
-      .withIndex("by_invitation_token", (q) => q.eq("invitationToken", args.token))
-      .unique();
-
-    if (!user) {
-      throw new Error("Invalid invitation token");
-    }
-
-    // Check if token is expired
-    if (user.invitationExpiresAt && user.invitationExpiresAt < Date.now()) {
-      throw new Error("Invitation has expired");
-    }
-
-    // Check if invitation was already accepted
-    if (user.invitationAcceptedAt) {
-      throw new Error("Invitation has already been accepted");
-    }
-
-    // Update user record
-    await ctx.db.patch(user._id, {
-      clerkId: args.clerkId,
-      isActive: true,
-      invitationAcceptedAt: Date.now(),
-      lastLogin: Date.now(),
-      invitationToken: undefined, // Clear the token
-      updatedAt: Date.now(),
-      
-      // Set default communication preferences
-      communicationPreferences: {
-        emailNotifications: true,
-        smsNotifications: true,
-        academicAlerts: true,
-        financialAlerts: true,
-        administrativeNotifications: true,
-        marketingCommunications: false,
-      },
-    });
-
-    // Create audit log
-    await ctx.db.insert("auditLogs", {
-      foundationId: user.foundationId!,
-      userId: user._id,
-      userEmail: user.email,
-      userRole: user.role,
-      action: "invitation_accepted",
-      entityType: "users",
-      entityId: user._id,
-      description: `User accepted invitation and activated account`,
-      riskLevel: "low",
-      createdAt: Date.now(),
-    });
-
-    // Send welcome email
-    const foundation = await ctx.db.get(user.foundationId!);
-    if (foundation) {
-      await ctx.scheduler.runAfter(0, internal.notifications.sendNewUserWelcomeEmail, {
-        foundationId: user.foundationId!,
-        userEmail: user.email,
-        userName: `${user.firstName} ${user.lastName}`,
-        userRole: user.role,
-      });
-    }
-
-    return { 
-      success: true,
-      user: {
-        _id: user._id,
-        foundationId: user.foundationId,
-        role: user.role,
-      }
-    };
-  },
-});
 
 /**
  * Get users by roles (for reviewer assignment, etc.)

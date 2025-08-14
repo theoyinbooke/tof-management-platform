@@ -22,6 +22,7 @@ import {
 import { formatDate } from "@/lib/utils";
 import { InviteUserDialog } from "@/components/users/invite-user-dialog";
 import { IncompleteInvitations } from "@/components/admin/incomplete-invitations";
+import { UserDebugPanel } from "@/components/admin/user-debug-panel";
 import { toast } from "sonner";
 
 export default function AdminPage() {
@@ -132,6 +133,9 @@ export default function AdminPage() {
           </TabsList>
 
           <TabsContent value="overview" className="space-y-6">
+            {/* User Debug Panel - temporary for troubleshooting */}
+            <UserDebugPanel />
+            
             {/* Incomplete Invitations Alert */}
             <IncompleteInvitations />
             
