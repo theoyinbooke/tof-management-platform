@@ -15,7 +15,7 @@ export function MainLayout({ children }: MainLayoutProps) {
   
   // Don't show layout on auth pages
   const isAuthPage = pathname.startsWith("/sign-in") || pathname.startsWith("/sign-up") || pathname.startsWith("/accept-invitation");
-  const isPublicPage = pathname === "/" || pathname === "/design-system";
+  const isPublicPage = pathname === "/" || pathname === "/design-system" || pathname === "/apply";
   
   if (isAuthPage || isPublicPage) {
     return <>{children}</>;
