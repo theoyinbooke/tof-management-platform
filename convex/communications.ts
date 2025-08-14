@@ -53,11 +53,9 @@ export const sendEmail = internalMutation({
     });
 
     try {
-      // TODO: Integrate with email service provider (SendGrid, Resend, etc.)
-      // This is a placeholder for actual email sending logic
-      
-      // For now, we'll simulate email sending
-      const isSimulation = process.env.NODE_ENV === "development";
+      // Check if Resend API key is configured
+      const resendApiKey = process.env.RESEND_API_KEY;
+      const isSimulation = !resendApiKey || resendApiKey === "your_resend_api_key_here";
       
       if (isSimulation) {
         console.log(`[EMAIL SIMULATION] To: ${args.to}, Subject: ${args.subject}`);
@@ -73,30 +71,61 @@ export const sendEmail = internalMutation({
         return { success: true, messageId: emailLogId };
       }
 
-      // Real email integration would go here
-      // Example with SendGrid:
-      /*
-      const sgMail = require('@sendgrid/mail');
-      sgMail.setApiKey(process.env.SENDGRID_API_KEY);
-      
-      const msg = {
-        to: args.to,
-        from: 'noreply@theoyinbookefoundation.org',
+      // Real Resend integration
+      const emailData = {
+        from: 'TheOyinbooke Foundation <noreply@theoyinbookefoundation.org>',
+        to: [args.to],
         subject: args.subject,
         html: args.content,
       };
-      
-      await sgMail.send(msg);
-      */
+
+      // Add attachments if provided
+      if (args.attachments && args.attachments.length > 0) {
+        emailData.attachments = await Promise.all(
+          args.attachments.map(async (attachment) => {
+            // Get file from Convex storage
+            const fileUrl = await ctx.storage.getUrl(attachment.storageId);
+            if (!fileUrl) throw new Error("File not found");
+            
+            // Fetch file content
+            const response = await fetch(fileUrl);
+            const buffer = await response.arrayBuffer();
+            
+            return {
+              filename: attachment.filename,
+              content: Array.from(new Uint8Array(buffer)),
+              type: attachment.contentType,
+            };
+          })
+        );
+      }
+
+      // Send email via Resend
+      const response = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${resendApiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(emailData),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(`Resend API error: ${errorData.message || response.statusText}`);
+      }
+
+      const result = await response.json();
 
       // Update log as sent
       await ctx.db.patch(emailLogId, {
         status: "sent",
         sentAt: Date.now(),
+        externalId: result.id, // Resend email ID
         updatedAt: Date.now(),
       });
 
-      return { success: true, messageId: emailLogId };
+      return { success: true, messageId: emailLogId, externalId: result.id };
     } catch (error) {
       // Update log as failed
       await ctx.db.patch(emailLogId, {
