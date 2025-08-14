@@ -17,6 +17,8 @@ export function Providers({ children }: { children: ReactNode }) {
       afterSignUpUrl="/dashboard"
       signInUrl="/sign-in"
       signUpUrl="/sign-up"
+      signInFallbackRedirectUrl="/dashboard"
+      signUpFallbackRedirectUrl="/dashboard"
       appearance={{
         baseTheme: undefined,
         variables: {

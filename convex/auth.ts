@@ -89,21 +89,35 @@ export const storeUser = mutation({
     imageUrl: v.optional(v.string()),
   },
   handler: async (ctx, args) => {
-    // Check if user already exists
-    const existingUser = await ctx.db
+    // First check if user already exists by Clerk ID
+    const existingUserByClerkId = await ctx.db
       .query("users")
       .withIndex("by_clerk_id", (q) => q.eq("clerkId", args.clerkId))
       .unique();
 
-    if (existingUser) {
+    if (existingUserByClerkId) {
       // Update existing user
-      await ctx.db.patch(existingUser._id, {
+      await ctx.db.patch(existingUserByClerkId._id, {
         email: args.email,
         firstName: args.firstName,
         lastName: args.lastName,
         updatedAt: Date.now(),
       });
-      return existingUser._id;
+      return existingUserByClerkId._id;
+    }
+
+    // Check if this is an invited user (exists by email but no clerkId)
+    const invitedUser = await ctx.db
+      .query("users")
+      .withIndex("by_email", (q) => q.eq("email", args.email))
+      .filter((q) => q.eq(q.field("clerkId"), ""))
+      .unique();
+
+    if (invitedUser) {
+      // This is an invited user accepting their invitation
+      // The acceptInvitation mutation should handle this, not the webhook
+      console.log(`User ${args.email} is an invited user, skipping webhook user creation`);
+      return invitedUser._id;
     }
 
     // Check if this is the first user (make them super admin)
