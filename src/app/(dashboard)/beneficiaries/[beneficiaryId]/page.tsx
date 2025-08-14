@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useQuery, useMutation } from "convex/react";
-import { api } from "../../../../convex/_generated/api";
+import { api } from "../../../../../convex/_generated/api";
 import { useParams, useRouter } from "next/navigation";
 import { ProtectedRoute } from "@/components/auth/protected-route";
 import { Button } from "@/components/ui/button";
@@ -35,7 +35,7 @@ import {
   MoreHorizontal
 } from "lucide-react";
 import { formatCurrency, formatDate, formatPhoneNumber, formatFileSize } from "@/lib/utils";
-import { Id } from "../../../../convex/_generated/dataModel";
+import { Id } from "../../../../../convex/_generated/dataModel";
 import { toast } from "sonner";
 import { DocumentUpload } from "@/components/documents/document-upload";
 import {
@@ -116,7 +116,7 @@ export default function BeneficiaryDetailPage() {
     }
   };
 
-  const getStatusBadge = (status: string) => {
+  const getDocumentStatusBadge = (status: string) => {
     switch (status) {
       case "pending_review":
         return <Badge className="bg-yellow-100 text-yellow-800"><Clock className="w-3 h-3 mr-1" />Pending Review</Badge>;
@@ -391,7 +391,7 @@ export default function BeneficiaryDetailPage() {
               </CardHeader>
               <CardContent>
                 <div className="flex flex-wrap gap-2">
-                  {beneficiaryData.supportTypes.map((type) => (
+                  {beneficiaryData.supportTypes.map((type: string) => (
                     <Badge key={type} variant="outline" className="capitalize">
                       {type.replace("_", " ")}
                     </Badge>
@@ -457,7 +457,7 @@ export default function BeneficiaryDetailPage() {
               </CardHeader>
               <CardContent>
                 <div className="space-y-4">
-                  {academicSessions?.map((session) => (
+                  {academicSessions?.map((session: any) => (
                     <div key={session._id} className="border rounded-lg p-4">
                       <div className="flex justify-between items-start">
                         <div>
@@ -543,7 +543,7 @@ export default function BeneficiaryDetailPage() {
               <CardContent>
                 {documents && documents.length > 0 ? (
                   <div className="space-y-4">
-                    {documents.map((doc) => (
+                    {documents.map((doc: any) => (
                       <div key={doc._id} className="border rounded-lg p-4 hover:bg-gray-50 transition-colors">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-4 flex-1">
@@ -551,7 +551,7 @@ export default function BeneficiaryDetailPage() {
                             <div className="flex-1">
                               <div className="flex items-center gap-2">
                                 <p className="font-medium">{doc.fileName}</p>
-                                {getStatusBadge(doc.status)}
+                                {getDocumentStatusBadge(doc.status)}
                               </div>
                               <div className="flex items-center gap-4 text-sm text-gray-600 mt-1">
                                 <span>{getDocumentTypeLabel(doc.documentType)}</span>

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useQuery, useMutation } from "convex/react";
-import { api } from "../../../../convex/_generated/api";
+import { api } from "../../../../../convex/_generated/api";
 import { useCurrentUser } from "@/hooks/use-current-user";
 import { ProtectedRoute } from "@/components/auth/protected-route";
 import { Button } from "@/components/ui/button";
