@@ -42,7 +42,7 @@ function AcceptInvitationContent() {
   // Query to validate invitation token
   const invitationData = useQuery(
     api.users.validateInvitationToken,
-    token ? { token } : "skip"
+    token && token.trim() ? { token: token.trim() } : "skip"
   ) as InvitationData | undefined | null;
 
   // Mutation to accept invitation

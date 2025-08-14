@@ -739,22 +739,22 @@ export const validateInvitationToken = query({
       .unique();
 
     if (!user) {
-      throw new Error("Invalid invitation token");
+      return null; // Return null instead of throwing error
     }
 
     // Check if token is expired
     if (user.invitationExpiresAt && user.invitationExpiresAt < Date.now()) {
-      throw new Error("Invitation has expired");
+      return null; // Return null instead of throwing error
     }
 
     // Check if invitation was already accepted
     if (user.invitationAcceptedAt) {
-      throw new Error("Invitation has already been accepted");
+      return null; // Return null instead of throwing error
     }
 
     // Check if user is already active
     if (user.isActive && user.clerkId) {
-      throw new Error("Account is already active");
+      return null; // Return null instead of throwing error
     }
 
     // Get foundation details
