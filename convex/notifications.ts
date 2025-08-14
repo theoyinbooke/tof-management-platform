@@ -8,6 +8,261 @@ import { authenticateAndAuthorize } from "./auth";
 import { Doc, Id } from "./_generated/dataModel";
 import { api, internal } from "./_generated/api";
 
+/**
+ * Generate email content using appropriate template based on notification type
+ */
+function generateNotificationEmailContent(
+  type: string,
+  title: string,
+  message: string,
+  recipientName: string,
+  foundationName: string,
+  priority: "low" | "medium" | "high" | "urgent",
+  actionUrl?: string,
+  actionText?: string,
+  additionalData?: any
+): string {
+  // Determine category based on type and priority
+  const category = 
+    type === "academic" ? (priority === "high" || priority === "urgent" ? "warning" : "information") :
+    type === "financial" ? (priority === "high" || priority === "urgent" ? "warning" : "information") :
+    type === "alert" ? "warning" :
+    type === "success" ? "success" :
+    type === "error" ? "error" : "information";
+
+  // Use the generic system notification template
+  return `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <div style="background-color: ${
+        category === 'success' ? '#16a34a' :
+        category === 'error' ? '#dc2626' :
+        category === 'warning' ? '#f59e0b' : '#374151'
+      }; color: white; padding: 20px; text-align: center;">
+        <h1>
+          ${category === 'success' ? '✅' :
+            category === 'error' ? '❌' :
+            category === 'warning' ? '⚠️' : 'ℹ️'} ${title}
+        </h1>
+        <p>TheOyinbooke Foundation${priority === 'urgent' ? ' - URGENT' : ''}</p>
+      </div>
+      
+      <div style="padding: 30px; background-color: #f9fafb;">
+        <h2>Dear ${recipientName},</h2>
+        
+        <div style="background-color: white; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid ${
+          category === 'success' ? '#16a34a' :
+          category === 'error' ? '#dc2626' :
+          category === 'warning' ? '#f59e0b' : '#374151'
+        };">
+          <div style="margin-bottom: 15px;">
+            <span style="background-color: ${
+              priority === 'urgent' ? '#dc2626' :
+              priority === 'high' ? '#f59e0b' :
+              priority === 'medium' ? '#0ea5e9' : '#6b7280'
+            }; color: white; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: bold; text-transform: uppercase;">
+              ${priority} Priority
+            </span>
+          </div>
+          
+          <div style="color: #374151; line-height: 1.6;">
+            ${message}
+          </div>
+          
+          <div style="margin-top: 15px; font-size: 14px; color: #6b7280;">
+            <strong>Timestamp:</strong> ${new Date().toLocaleString('en-NG', { timeZone: 'Africa/Lagos' })}
+          </div>
+        </div>
+        
+        ${actionUrl && actionText ? `
+        <div style="text-align: center; margin: 30px 0;">
+          <a href="${actionUrl}" style="background-color: ${
+            category === 'success' ? '#16a34a' :
+            category === 'error' ? '#dc2626' :
+            category === 'warning' ? '#f59e0b' : '#374151'
+          }; color: white; padding: 15px 30px; text-decoration: none; border-radius: 8px; display: inline-block; font-size: 16px; font-weight: bold;">
+            ${actionText}
+          </a>
+        </div>
+        ` : ''}
+        
+        <p>This notification was sent to keep you informed about important updates regarding your ${foundationName} account.</p>
+        
+        <p>Best regards,<br>
+        The ${foundationName} Team</p>
+      </div>
+      
+      <div style="background-color: #374151; color: white; padding: 20px; text-align: center; font-size: 12px;">
+        <p>© 2024 TheOyinbooke Foundation. All rights reserved.</p>
+        <p>This is an automated message. Please do not reply to this email.</p>
+      </div>
+    </div>
+  `;
+}
+
+/**
+ * Send application submission acknowledgement email
+ */
+export const sendApplicationSubmissionEmail = internalMutation({
+  args: {
+    foundationId: v.id("foundations"),
+    applicantEmail: v.string(),
+    applicantName: v.string(),
+    applicationId: v.string(),
+    submissionDate: v.string(),
+    expectedReviewTime: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    // Get foundation details
+    const foundation = await ctx.db.get(args.foundationId);
+    if (!foundation) throw new Error("Foundation not found");
+
+    const emailContent = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <div style="background-color: #0ea5e9; color: white; padding: 20px; text-align: center;">
+          <h1>Application Submitted!</h1>
+          <p>TheOyinbooke Foundation</p>
+        </div>
+        
+        <div style="padding: 30px; background-color: #f9fafb;">
+          <h2>Dear ${args.applicantName},</h2>
+          
+          <p>Thank you for submitting your application to ${foundation.name}. We have successfully received your application and it is now under review.</p>
+          
+          <div style="background-color: white; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #0ea5e9;">
+            <h3 style="margin-top: 0; color: #0ea5e9;">Application Summary</h3>
+            <table style="width: 100%; border-collapse: collapse;">
+              <tr>
+                <td style="padding: 8px 0; border-bottom: 1px solid #e5e7eb;"><strong>Application ID:</strong></td>
+                <td style="padding: 8px 0; border-bottom: 1px solid #e5e7eb; font-family: monospace;">${args.applicationId}</td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 0; border-bottom: 1px solid #e5e7eb;"><strong>Submission Date:</strong></td>
+                <td style="padding: 8px 0; border-bottom: 1px solid #e5e7eb;">${args.submissionDate}</td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 0; border-bottom: 1px solid #e5e7eb;"><strong>Status:</strong></td>
+                <td style="padding: 8px 0; border-bottom: 1px solid #e5e7eb;"><span style="color: #0ea5e9; font-weight: bold;">Under Review</span></td>
+              </tr>
+              ${args.expectedReviewTime ? `
+              <tr>
+                <td style="padding: 8px 0;"><strong>Expected Review Time:</strong></td>
+                <td style="padding: 8px 0;">${args.expectedReviewTime}</td>
+              </tr>
+              ` : ''}
+            </table>
+          </div>
+          
+          <div style="background-color: #fef3c7; border: 1px solid #f59e0b; border-radius: 8px; padding: 15px; margin: 20px 0;">
+            <h4 style="margin-top: 0; color: #92400e;">What Happens Next?</h4>
+            <ul style="margin: 10px 0; padding-left: 20px; color: #92400e;">
+              <li>Our review team will evaluate your application</li>
+              <li>You may be contacted for additional information or documents</li>
+              <li>We will notify you via email when a decision is made</li>
+              <li>Keep your application ID for reference</li>
+            </ul>
+          </div>
+          
+          <p>Please save this email for your records. If you have any questions about your application, please contact us and reference your application ID.</p>
+          
+          <p>Best regards,<br>
+          The ${foundation.name} Admissions Team</p>
+        </div>
+        
+        <div style="background-color: #374151; color: white; padding: 20px; text-align: center; font-size: 12px;">
+          <p>© 2024 TheOyinbooke Foundation. All rights reserved.</p>
+          <p>This is an automated message. Please do not reply to this email.</p>
+        </div>
+      </div>
+    `;
+
+    // Send email
+    await ctx.scheduler.runAfter(0, internal.communications.sendEmail, {
+      foundationId: args.foundationId,
+      to: args.applicantEmail,
+      subject: `Application Submitted Successfully - ${args.applicationId}`,
+      content: emailContent,
+    });
+  },
+});
+
+/**
+ * Send new user welcome email
+ */
+export const sendNewUserWelcomeEmail = internalMutation({
+  args: {
+    foundationId: v.id("foundations"),
+    userEmail: v.string(),
+    userName: v.string(),
+    userRole: v.string(),
+  },
+  handler: async (ctx, args) => {
+    // Get foundation details
+    const foundation = await ctx.db.get(args.foundationId);
+    if (!foundation) throw new Error("Foundation not found");
+
+    const dashboardUrl = `${process.env.SITE_URL || 'https://theoyinbookefoundation.com'}/dashboard`;
+
+    const emailContent = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+        <div style="background-color: #16a34a; color: white; padding: 20px; text-align: center;">
+          <h1>Welcome to TheOyinbooke Foundation!</h1>
+          <p>Your account has been created successfully</p>
+        </div>
+        
+        <div style="padding: 30px; background-color: #f9fafb;">
+          <h2>Hello ${args.userName}!</h2>
+          
+          <p>Congratulations! Your account has been successfully created for <strong>${foundation.name}</strong>.</p>
+          
+          <div style="background-color: white; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #16a34a;">
+            <h3 style="margin-top: 0; color: #16a34a;">Account Details</h3>
+            <p><strong>Role:</strong> ${args.userRole.replace('_', ' ').toUpperCase()}</p>
+            <p><strong>Foundation:</strong> ${foundation.name}</p>
+            <p><strong>Account Status:</strong> Active</p>
+          </div>
+          
+          <div style="text-align: center; margin: 30px 0;">
+            <a href="${dashboardUrl}" style="background-color: #16a34a; color: white; padding: 15px 30px; text-decoration: none; border-radius: 8px; display: inline-block; font-size: 16px; font-weight: bold;">
+              Access Your Dashboard
+            </a>
+          </div>
+          
+          <div style="background-color: #e0f2fe; border: 1px solid #0ea5e9; border-radius: 8px; padding: 15px; margin: 20px 0;">
+            <h4 style="margin-top: 0; color: #0ea5e9;">What's Next?</h4>
+            <ul style="margin: 10px 0; padding-left: 20px; color: #0369a1;">
+              <li>Complete your profile information</li>
+              <li>Explore the dashboard features</li>
+              <li>Check your notification preferences</li>
+              ${args.userRole === 'beneficiary' ? '<li>Upload required documents</li>' : ''}
+              ${args.userRole === 'guardian' ? '<li>Add your dependent beneficiaries</li>' : ''}
+              ${args.userRole === 'reviewer' ? '<li>Review your assigned applications</li>' : ''}
+              ${args.userRole === 'admin' ? '<li>Set up foundation configuration</li>' : ''}
+            </ul>
+          </div>
+          
+          <p>If you have any questions or need assistance, please contact our support team.</p>
+          
+          <p>Best regards,<br>
+          The ${foundation.name} Team</p>
+        </div>
+        
+        <div style="background-color: #374151; color: white; padding: 20px; text-align: center; font-size: 12px;">
+          <p>© 2024 TheOyinbooke Foundation. All rights reserved.</p>
+          <p>This is an automated message. Please do not reply to this email.</p>
+        </div>
+      </div>
+    `;
+
+    // Send email
+    await ctx.scheduler.runAfter(0, internal.communications.sendEmail, {
+      foundationId: args.foundationId,
+      to: args.userEmail,
+      subject: `Welcome to ${foundation.name} - Account Created Successfully`,
+      content: emailContent,
+    });
+  },
+});
+
 // ===================================
 // NOTIFICATION MANAGEMENT
 // ===================================
@@ -600,19 +855,27 @@ export const createEnhancedNotification = internalMutation({
         // Send email if enabled and email provided
         if (prefs.emailNotifications && recipient.email) {
           try {
+            // Get foundation details for email template
+            const foundation = await ctx.db.get(args.foundationId);
+            const foundationName = foundation?.name || "TheOyinbooke Foundation";
+            
+            // Generate professional email content using template
+            const emailContent = generateNotificationEmailContent(
+              args.type,
+              args.title,
+              args.message,
+              `${recipient.firstName} ${recipient.lastName}`,
+              foundationName,
+              args.priority,
+              args.actionUrl,
+              args.actionText
+            );
+
             await ctx.scheduler.runAfter(0, internal.communications.sendEmail, {
               foundationId: args.foundationId,
               to: recipient.email,
-              subject: args.title,
-              content: `
-                <h2>${args.title}</h2>
-                <p>${args.message}</p>
-                ${args.actionUrl ? `<p><a href="${args.actionUrl}" style="background-color: #16a34a; color: white; padding: 10px 20px; text-decoration: none; border-radius: 5px;">${args.actionText || "View Details"}</a></p>` : ""}
-                <br>
-                <p style="font-size: 12px; color: #666;">
-                  This is an automated notification from TheOyinbooke Foundation Management Platform.
-                </p>
-              `,
+              subject: `${args.priority === 'urgent' ? '🚨 URGENT: ' : args.priority === 'high' ? '⚠️ ' : ''}${args.title}`,
+              content: emailContent,
               priority: args.priority === "urgent" ? "urgent" : args.priority === "high" ? "high" : "normal",
             });
 

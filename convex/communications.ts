@@ -3,10 +3,11 @@
 // TheOyinbooke Foundation Management Platform
 
 import { v } from "convex/values";
-import { query, mutation, internalMutation } from "./_generated/server";
+import { query, mutation, internalMutation, internalAction } from "./_generated/server";
 import { authenticateAndAuthorize } from "./auth";
 import { Doc, Id } from "./_generated/dataModel";
 import { api, internal } from "./_generated/api";
+import type { ActionCtx } from "./_generated/server";
 
 // ===================================
 // EMAIL COMMUNICATION
@@ -15,14 +16,14 @@ import { api, internal } from "./_generated/api";
 /**
  * Send email notification
  */
-export const sendEmail = internalMutation({
+export const sendEmail = internalAction({
   args: {
     foundationId: v.id("foundations"),
     to: v.string(),
     subject: v.string(),
     content: v.string(),
     template: v.optional(v.string()),
-    templateData: v.optional(v.object({})),
+    templateData: v.optional(v.any()),
     priority: v.optional(v.union(
       v.literal("low"),
       v.literal("normal"), 
@@ -35,9 +36,11 @@ export const sendEmail = internalMutation({
       storageId: v.id("_storage"),
     }))),
   },
-  handler: async (ctx, args) => {
-    // Log email attempt
-    const emailLogId = await ctx.db.insert("communicationLogs", {
+  handler: async (ctx: ActionCtx, args): Promise<{ success: boolean; messageId: Id<"communicationLogs">; externalId?: string }> => {
+    console.log(`[EMAIL] Attempting to send email to ${args.to} with subject: ${args.subject}`);
+    
+    // Log email attempt using mutation
+    const emailLogId: Id<"communicationLogs"> = await ctx.runMutation(internal.communications.logEmailAttempt, {
       foundationId: args.foundationId,
       type: "email",
       recipient: args.to,
@@ -48,32 +51,41 @@ export const sendEmail = internalMutation({
       template: args.template,
       templateData: args.templateData,
       attemptCount: 1,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
     });
 
     try {
       // Check if Resend API key is configured
       const resendApiKey = process.env.RESEND_API_KEY;
-      const isSimulation = !resendApiKey || resendApiKey === "your_resend_api_key_here";
+      const isSimulation = !resendApiKey || resendApiKey === "your_resend_api_key_here" || resendApiKey.startsWith('re_') === false;
+      
+      console.log(`[EMAIL] API Key validation:`, {
+        hasKey: !!resendApiKey,
+        keyLength: resendApiKey?.length,
+        startsWithRe: resendApiKey?.startsWith('re_'),
+        isSimulation
+      });
       
       if (isSimulation) {
         console.log(`[EMAIL SIMULATION] To: ${args.to}, Subject: ${args.subject}`);
-        console.log(`Content: ${args.content}`);
+        console.log(`[EMAIL SIMULATION] RESEND_API_KEY configured: ${!!resendApiKey}`);
+        console.log(`Content preview: ${args.content.substring(0, 200)}...`);
         
         // Update log as sent (simulation)
-        await ctx.db.patch(emailLogId, {
+        await ctx.runMutation(internal.communications.updateEmailLog, {
+          emailLogId,
           status: "sent",
           sentAt: Date.now(),
-          updatedAt: Date.now(),
         });
         
+        console.log(`[EMAIL SIMULATION] Email marked as sent in logs`);
         return { success: true, messageId: emailLogId };
       }
 
       // Real Resend integration
+      console.log(`[EMAIL] Using real Resend API to send to ${args.to}`);
+      
       const emailData: any = {
-        from: 'TheOyinbooke Foundation <noreply@theoyinbookefoundation.org>',
+        from: 'TheOyinbooke Foundation <noreply@theoyinbookefoundation.com>',
         to: [args.to],
         subject: args.subject,
         html: args.content,
@@ -111,31 +123,107 @@ export const sendEmail = internalMutation({
       });
 
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(`Resend API error: ${errorData.message || response.statusText}`);
+        const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));
+        console.error(`[EMAIL] Resend API error response:`, {
+          status: response.status,
+          statusText: response.statusText,
+          error: errorData,
+          from: emailData.from,
+          to: emailData.to
+        });
+        throw new Error(`Resend API error (${response.status}): ${errorData.message || response.statusText}`);
       }
 
       const result = await response.json();
 
       // Update log as sent
-      await ctx.db.patch(emailLogId, {
+      await ctx.runMutation(internal.communications.updateEmailLog, {
+        emailLogId,
         status: "sent",
         sentAt: Date.now(),
-        updatedAt: Date.now(),
       });
 
+      console.log(`[EMAIL] Successfully sent email to ${args.to} with Resend ID: ${result.id}`);
       return { success: true, messageId: emailLogId, externalId: result.id };
     } catch (error) {
+      console.error(`[EMAIL] Failed to send email to ${args.to}:`, error);
+      
       // Update log as failed
-      await ctx.db.patch(emailLogId, {
+      await ctx.runMutation(internal.communications.updateEmailLog, {
+        emailLogId,
         status: "failed",
         errorMessage: error instanceof Error ? error.message : String(error),
         lastAttemptAt: Date.now(),
-        updatedAt: Date.now(),
       });
 
       throw new Error(`Failed to send email: ${error instanceof Error ? error.message : String(error)}`);
     }
+  },
+});
+
+/**
+ * Helper mutation to log email attempts
+ */
+export const logEmailAttempt = internalMutation({
+  args: {
+    foundationId: v.id("foundations"),
+    type: v.literal("email"),
+    recipient: v.string(),
+    subject: v.optional(v.string()),
+    content: v.string(),
+    status: v.literal("pending"),
+    priority: v.optional(v.union(
+      v.literal("low"),
+      v.literal("normal"), 
+      v.literal("high"),
+      v.literal("urgent")
+    )),
+    template: v.optional(v.string()),
+    templateData: v.optional(v.any()),
+    attemptCount: v.number(),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db.insert("communicationLogs", {
+      foundationId: args.foundationId,
+      type: args.type,
+      recipient: args.recipient,
+      subject: args.subject,
+      content: args.content,
+      status: args.status,
+      priority: args.priority || "normal",
+      template: args.template,
+      templateData: args.templateData,
+      attemptCount: args.attemptCount,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+  },
+});
+
+/**
+ * Helper mutation to update email logs
+ */
+export const updateEmailLog = internalMutation({
+  args: {
+    emailLogId: v.id("communicationLogs"),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("sent"),
+      v.literal("delivered"),
+      v.literal("failed"),
+      v.literal("bounced")
+    ),
+    sentAt: v.optional(v.number()),
+    deliveredAt: v.optional(v.number()),
+    lastAttemptAt: v.optional(v.number()),
+    errorMessage: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const { emailLogId, ...updates } = args;
+    await ctx.db.patch(emailLogId, {
+      ...updates,
+      updatedAt: Date.now(),
+    });
   },
 });
 
@@ -349,7 +437,7 @@ export const sendBulkNotification = mutation({
     subject: v.optional(v.string()),
     message: v.string(),
     templateId: v.optional(v.id("communicationTemplates")),
-    templateData: v.optional(v.object({})),
+    templateData: v.optional(v.any()),
     priority: v.optional(v.union(
       v.literal("low"),
       v.literal("normal"),

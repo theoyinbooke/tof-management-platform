@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../../../convex/_generated/api";
+import { useCurrentUser } from "@/hooks/use-current-user";
 import { ProtectedRoute } from "@/components/auth/protected-route";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,7 +24,10 @@ import {
   ArrowLeft,
   UserPlus,
   Download,
-  Eye
+  Eye,
+  MailX,
+  RefreshCw,
+  Clock
 } from "lucide-react";
 import { 
   DropdownMenu,
@@ -45,6 +49,7 @@ type UserRole = "super_admin" | "admin" | "reviewer" | "beneficiary" | "guardian
 
 export default function UsersPage() {
   const router = useRouter();
+  const { user } = useCurrentUser();
   const [searchTerm, setSearchTerm] = useState("");
   const [roleFilter, setRoleFilter] = useState<UserRole | "all">("all");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
@@ -56,6 +61,8 @@ export default function UsersPage() {
   const users = useQuery(api.admin.getAllUsers);
   const deactivateUser = useMutation(api.admin.deactivateUser);
   const updateUserRole = useMutation(api.admin.updateUserRole);
+  const revokeInvitation = useMutation(api.users.revokeInvitation);
+  const resendInvitation = useMutation(api.users.resendInvitation);
 
   // Filter users
   const filteredUsers = users?.filter(user => {
@@ -89,6 +96,44 @@ export default function UsersPage() {
   const handleViewUser = (userId: Id<"users">) => {
     setSelectedUser(userId);
     setDetailsDialogOpen(true);
+  };
+
+  const handleRevokeInvitation = async (userId: Id<"users">) => {
+    if (!user?.foundationId) {
+      toast.error("User foundation not found");
+      return;
+    }
+    
+    try {
+      await revokeInvitation({
+        foundationId: user.foundationId,
+        userId: userId,
+      });
+      toast.success("Invitation revoked successfully");
+    } catch (error: any) {
+      toast.error(error.message || "Failed to revoke invitation");
+    }
+  };
+
+  const handleResendInvitation = async (userId: Id<"users">) => {
+    if (!user?.foundationId) {
+      toast.error("User foundation not found");
+      return;
+    }
+    
+    try {
+      await resendInvitation({
+        foundationId: user.foundationId,
+        userId: userId,
+      });
+      toast.success("Invitation resent successfully");
+    } catch (error: any) {
+      toast.error(error.message || "Failed to resend invitation");
+    }
+  };
+
+  const isInvitationPending = (userRecord: any) => {
+    return !userRecord.clerkId && !userRecord.isActive;
   };
 
   const getRoleColor = (role: UserRole) => {
@@ -223,8 +268,8 @@ export default function UsersPage() {
                             {user.role.replace("_", " ").toUpperCase()}
                           </Badge>
                           {!user.isActive && (
-                            <Badge variant="secondary" className="bg-red-100 text-red-800">
-                              Inactive
+                            <Badge variant="secondary" className="bg-yellow-100 text-yellow-800">
+                              {isInvitationPending(user) ? "Invitation Pending" : "Inactive"}
                             </Badge>
                           )}
                         </div>
@@ -265,20 +310,44 @@ export default function UsersPage() {
                             <Edit3 className="w-4 h-4 mr-2" />
                             Edit User
                           </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          {user.isActive ? (
-                            <DropdownMenuItem 
-                              onClick={() => handleDeactivateUser(user._id)}
-                              className="text-red-600"
-                            >
-                              <ShieldOff className="w-4 h-4 mr-2" />
-                              Deactivate
-                            </DropdownMenuItem>
-                          ) : (
-                            <DropdownMenuItem onClick={() => handleDeactivateUser(user._id)}>
-                              <Shield className="w-4 h-4 mr-2" />
-                              Reactivate
-                            </DropdownMenuItem>
+                          
+                          {/* Invitation Management - only show for pending invitations */}
+                          {isInvitationPending(user) && (
+                            <>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem onClick={() => handleResendInvitation(user._id)}>
+                                <RefreshCw className="w-4 h-4 mr-2" />
+                                Resend Invitation
+                              </DropdownMenuItem>
+                              <DropdownMenuItem 
+                                onClick={() => handleRevokeInvitation(user._id)}
+                                className="text-red-600"
+                              >
+                                <MailX className="w-4 h-4 mr-2" />
+                                Revoke Invitation
+                              </DropdownMenuItem>
+                            </>
+                          )}
+                          
+                          {/* Regular user management - only show for activated users */}
+                          {!isInvitationPending(user) && (
+                            <>
+                              <DropdownMenuSeparator />
+                              {user.isActive ? (
+                                <DropdownMenuItem 
+                                  onClick={() => handleDeactivateUser(user._id)}
+                                  className="text-red-600"
+                                >
+                                  <ShieldOff className="w-4 h-4 mr-2" />
+                                  Deactivate
+                                </DropdownMenuItem>
+                              ) : (
+                                <DropdownMenuItem onClick={() => handleDeactivateUser(user._id)}>
+                                  <Shield className="w-4 h-4 mr-2" />
+                                  Reactivate
+                                </DropdownMenuItem>
+                              )}
+                            </>
                           )}
                         </DropdownMenuContent>
                       </DropdownMenu>

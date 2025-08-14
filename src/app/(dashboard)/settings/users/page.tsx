@@ -27,7 +27,10 @@ import {
   Phone,
   Mail,
   Calendar,
-  AlertCircle
+  AlertCircle,
+  MailX,
+  RefreshCw,
+  Clock
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -51,6 +54,7 @@ import {
 } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { InviteUserDialog } from "@/components/users/invite-user-dialog";
+import { UserDetailsDialog } from "@/components/users/user-details-dialog";
 
 export default function UsersManagementPage() {
   const router = useRouter();
@@ -65,6 +69,8 @@ export default function UsersManagementPage() {
     userName: string;
   } | null>(null);
   const [newRole, setNewRole] = useState<string>("");
+  const [selectedUserForDetails, setSelectedUserForDetails] = useState<Id<"users"> | null>(null);
+  const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
 
   // Get foundation ID from user
   const foundationId = user?.foundationId as Id<"foundations"> | undefined;
@@ -90,6 +96,8 @@ export default function UsersManagementPage() {
   const updateUserRole = useMutation(api.auth.updateUserRole);
   const deactivateUser = useMutation(api.users.deactivate);
   const reactivateUser = useMutation(api.users.reactivate);
+  const revokeInvitation = useMutation(api.users.revokeInvitation);
+  const resendInvitation = useMutation(api.users.resendInvitation);
 
   const getRoleBadge = (role: string) => {
     const styles = {
@@ -153,6 +161,39 @@ export default function UsersManagementPage() {
     } catch (error: any) {
       toast.error(error.message || "Failed to reactivate user");
     }
+  };
+
+  const handleRevokeInvitation = async (userId: Id<"users">, userName: string) => {
+    try {
+      await revokeInvitation({
+        foundationId: foundationId!,
+        userId: userId,
+      });
+      toast.success(`Invitation for ${userName} has been revoked`);
+    } catch (error: any) {
+      toast.error(error.message || "Failed to revoke invitation");
+    }
+  };
+
+  const handleResendInvitation = async (userId: Id<"users">, userName: string) => {
+    try {
+      await resendInvitation({
+        foundationId: foundationId!,
+        userId: userId,
+      });
+      toast.success(`Invitation resent to ${userName}`);
+    } catch (error: any) {
+      toast.error(error.message || "Failed to resend invitation");
+    }
+  };
+
+  const isInvitationPending = (userRecord: any) => {
+    return !userRecord.clerkId && !userRecord.isActive;
+  };
+
+  const handleViewUser = (userId: Id<"users">) => {
+    setSelectedUserForDetails(userId);
+    setDetailsDialogOpen(true);
   };
 
   const toggleUserSelection = (userId: Id<"users">) => {
@@ -390,9 +431,17 @@ export default function UsersManagementPage() {
                         {getRoleBadge(user.role)}
                       </td>
                       <td className="p-2">
-                        <Badge variant={user.isActive ? "default" : "secondary"}>
-                          {user.isActive ? "Active" : "Inactive"}
-                        </Badge>
+                        <div className="flex gap-2">
+                          <Badge variant={user.isActive ? "default" : "secondary"}>
+                            {user.isActive ? "Active" : (isInvitationPending(user) ? "Invitation Pending" : "Inactive")}
+                          </Badge>
+                          {isInvitationPending(user) && (
+                            <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200">
+                              <Clock className="w-3 h-3 mr-1" />
+                              Pending
+                            </Badge>
+                          )}
+                        </div>
                       </td>
                       <td className="p-2">
                         <div className="text-sm">
@@ -419,6 +468,16 @@ export default function UsersManagementPage() {
                           <DropdownMenuContent align="end">
                             <DropdownMenuLabel>Actions</DropdownMenuLabel>
                             <DropdownMenuSeparator />
+                            
+                            {/* View user details */}
+                            <DropdownMenuItem
+                              onClick={() => handleViewUser(user._id)}
+                            >
+                              <Eye className="w-4 h-4 mr-2" />
+                              View Details
+                            </DropdownMenuItem>
+                            
+                            {/* Role management - show for all users */}
                             <DropdownMenuItem
                               onClick={() => setRoleChangeDialog({
                                 userId: user._id,
@@ -429,23 +488,49 @@ export default function UsersManagementPage() {
                               <Settings className="w-4 h-4 mr-2" />
                               Change Role
                             </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            {user.isActive ? (
-                              <DropdownMenuItem
-                                onClick={() => handleDeactivateUser(user._id, `${user.firstName} ${user.lastName}`)}
-                                className="text-red-600"
-                              >
-                                <UserX className="w-4 h-4 mr-2" />
-                                Deactivate
-                              </DropdownMenuItem>
-                            ) : (
-                              <DropdownMenuItem
-                                onClick={() => handleReactivateUser(user._id, `${user.firstName} ${user.lastName}`)}
-                                className="text-green-600"
-                              >
-                                <UserCheck className="w-4 h-4 mr-2" />
-                                Reactivate
-                              </DropdownMenuItem>
+                            
+                            {/* Invitation Management - only show for pending invitations */}
+                            {isInvitationPending(user) && (
+                              <>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  onClick={() => handleResendInvitation(user._id, `${user.firstName} ${user.lastName}`)}
+                                >
+                                  <RefreshCw className="w-4 h-4 mr-2" />
+                                  Resend Invitation
+                                </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  onClick={() => handleRevokeInvitation(user._id, `${user.firstName} ${user.lastName}`)}
+                                  className="text-red-600"
+                                >
+                                  <MailX className="w-4 h-4 mr-2" />
+                                  Revoke Invitation
+                                </DropdownMenuItem>
+                              </>
+                            )}
+                            
+                            {/* User activation/deactivation - only show for activated users */}
+                            {!isInvitationPending(user) && (
+                              <>
+                                <DropdownMenuSeparator />
+                                {user.isActive ? (
+                                  <DropdownMenuItem
+                                    onClick={() => handleDeactivateUser(user._id, `${user.firstName} ${user.lastName}`)}
+                                    className="text-red-600"
+                                  >
+                                    <UserX className="w-4 h-4 mr-2" />
+                                    Deactivate
+                                  </DropdownMenuItem>
+                                ) : (
+                                  <DropdownMenuItem
+                                    onClick={() => handleReactivateUser(user._id, `${user.firstName} ${user.lastName}`)}
+                                    className="text-green-600"
+                                  >
+                                    <UserCheck className="w-4 h-4 mr-2" />
+                                    Reactivate
+                                  </DropdownMenuItem>
+                                )}
+                              </>
                             )}
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -467,6 +552,15 @@ export default function UsersManagementPage() {
             </div>
           </CardContent>
         </Card>
+
+        {/* User Details Dialog */}
+        {selectedUserForDetails && (
+          <UserDetailsDialog
+            userId={selectedUserForDetails}
+            open={detailsDialogOpen}
+            onOpenChange={setDetailsDialogOpen}
+          />
+        )}
 
         {/* Role Change Dialog */}
         <Dialog open={roleChangeDialog !== null} onOpenChange={() => setRoleChangeDialog(null)}>

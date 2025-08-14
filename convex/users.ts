@@ -1,6 +1,96 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { authenticateAndAuthorize } from "./auth";
+import { internal } from "./_generated/api";
+
+/**
+ * Generate invitation email content
+ */
+function generateInvitationEmailContent(data: {
+  inviteeName: string;
+  inviterName: string;
+  role: string;
+  foundationName: string;
+  signUpUrl: string;
+  expiresInDays?: number;
+}): string {
+  return `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <div style="background-color: #16a34a; color: white; padding: 20px; text-align: center;">
+        <h1>You're Invited!</h1>
+        <p>TheOyinbooke Foundation Management Platform</p>
+      </div>
+      
+      <div style="padding: 30px; background-color: #f9fafb;">
+        <h2>Dear ${data.inviteeName},</h2>
+        
+        <p><strong>${data.inviterName}</strong> has invited you to join <strong>${data.foundationName}</strong> as a <strong>${data.role}</strong>.</p>
+        
+        <div style="background-color: white; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #16a34a;">
+          <h3 style="margin-top: 0; color: #16a34a;">Your Role: ${data.role.replace('_', ' ').toUpperCase()}</h3>
+          <p>You'll have access to the foundation's management platform where you can:</p>
+          <ul style="margin: 10px 0; padding-left: 20px;">
+            ${data.role === 'admin' ? `
+              <li>Manage beneficiaries and applications</li>
+              <li>Review financial records</li>
+              <li>Oversee programs and activities</li>
+              <li>Generate reports and analytics</li>
+            ` : data.role === 'reviewer' ? `
+              <li>Review scholarship applications</li>
+              <li>Evaluate beneficiary documents</li>
+              <li>Provide assessment feedback</li>
+              <li>Track review progress</li>
+            ` : data.role === 'beneficiary' ? `
+              <li>Access your student portal</li>
+              <li>View financial support details</li>
+              <li>Track academic progress</li>
+              <li>Participate in programs</li>
+            ` : data.role === 'guardian' ? `
+              <li>Monitor your child's progress</li>
+              <li>View financial statements</li>
+              <li>Communicate with foundation staff</li>
+              <li>Access important updates</li>
+            ` : `
+              <li>Access the foundation platform</li>
+              <li>Collaborate with the team</li>
+              <li>Contribute to the mission</li>
+            `}
+          </ul>
+        </div>
+        
+        <div style="text-align: center; margin: 30px 0;">
+          <a href="${data.signUpUrl}" style="background-color: #16a34a; color: white; padding: 15px 30px; text-decoration: none; border-radius: 8px; display: inline-block; font-size: 16px; font-weight: bold;">
+            Accept Invitation & Sign Up
+          </a>
+        </div>
+        
+        <div style="background-color: #fef3c7; border: 1px solid #f59e0b; border-radius: 8px; padding: 15px; margin: 20px 0;">
+          <p style="margin: 0; color: #92400e; font-size: 14px;">
+            <strong>⏰ Important:</strong> This invitation ${data.expiresInDays ? `expires in ${data.expiresInDays} days` : 'expires soon'}. Please accept it as soon as possible.
+          </p>
+        </div>
+        
+        <p style="font-size: 14px; color: #6b7280;">
+          If you have any questions about this invitation or need assistance with the sign-up process, please don't hesitate to contact us.
+        </p>
+        
+        <p>We look forward to having you as part of our team!</p>
+        
+        <p>Best regards,<br>
+        <strong>${data.inviterName}</strong><br>
+        ${data.foundationName}</p>
+      </div>
+      
+      <div style="background-color: #374151; color: white; padding: 20px; text-align: center; font-size: 12px;">
+        <p>© 2024 TheOyinbooke Foundation. All rights reserved.</p>
+        <p>If you did not expect this invitation, you can safely ignore this email.</p>
+        <p style="margin-top: 10px; color: #9ca3af;">
+          Invitation link: <span style="font-family: monospace; font-size: 11px;">${data.signUpUrl}</span>
+        </p>
+      </div>
+    </div>
+  `;
+}
 
 /**
  * Get all users for a foundation (admin only)
@@ -383,26 +473,46 @@ export const createInvitation = mutation({
   handler: async (ctx, args) => {
     const currentUser = await authenticateAndAuthorize(ctx, args.foundationId, ["admin", "super_admin"]);
     
-    // Check if user already exists
+    // Check if user already exists in any foundation (global check)
     const existingUser = await ctx.db
       .query("users")
       .withIndex("by_email", (q) => q.eq("email", args.email))
       .first();
     
+    console.log(`Creating invitation for ${args.email}: existing user found =`, existingUser ? {
+      id: existingUser._id,
+      foundationId: existingUser.foundationId,
+      isActive: existingUser.isActive,
+      clerkId: existingUser.clerkId
+    } : null);
+    
     if (existingUser) {
-      throw new Error("A user with this email already exists");
+      // If user exists in the same foundation, it's a conflict
+      if (existingUser.foundationId === args.foundationId) {
+        throw new Error("A user with this email already exists in this foundation");
+      }
+      // If user exists in a different foundation, it's still a conflict for now
+      // (Later you might want to allow the same email in different foundations)
+      throw new Error("A user with this email already exists in another foundation");
     }
     
     // Create invitation record (you might want to add an invitations table)
-    // For now, we'll create a pending user record
+    // Generate secure invitation token
+    const invitationToken = crypto.randomUUID();
+    const invitationExpiresAt = Date.now() + (7 * 24 * 60 * 60 * 1000); // 7 days from now
+    
+    // Create pending user record with invitation token
     const userId = await ctx.db.insert("users", {
-      clerkId: "", // Will be filled when they sign up
+      clerkId: "", // Will be filled when they accept invitation
       foundationId: args.foundationId,
       email: args.email,
       firstName: args.firstName,
       lastName: args.lastName,
       role: args.role,
       isActive: false, // Inactive until they accept invitation
+      invitationToken,
+      invitationExpiresAt,
+      invitedBy: args.invitedBy,
       createdAt: Date.now(),
       updatedAt: Date.now(),
     });
@@ -421,11 +531,332 @@ export const createInvitation = mutation({
       createdAt: Date.now(),
     });
     
-    // TODO: Send actual invitation email
-    // For now, we'll just log it
-    console.log(`Invitation would be sent to ${args.email} for role ${args.role}`);
+    // Get foundation details for email
+    const foundation = await ctx.db.get(args.foundationId);
+    if (!foundation) {
+      throw new Error("Foundation not found");
+    }
+    
+    // Get inviter details
+    const inviter = await ctx.db.get(args.invitedBy);
+    if (!inviter) {
+      throw new Error("Inviter not found");
+    }
+    
+    // Send invitation email
+    console.log(`Attempting to send invitation email to ${args.email} for foundation ${foundation.name}`);
+    
+    try {
+      const emailContent = generateInvitationEmailContent({
+        inviteeName: `${args.firstName} ${args.lastName}`,
+        inviterName: `${inviter.firstName} ${inviter.lastName}`,
+        role: args.role,
+        foundationName: foundation.name,
+        signUpUrl: `${process.env.SITE_URL || 'https://theoyinbookefoundation.com'}/accept-invitation?token=${invitationToken}`,
+        expiresInDays: 7,
+      });
+      
+      console.log(`Generated email content for ${args.email}, scheduling email send...`);
+      
+      await ctx.scheduler.runAfter(0, internal.communications.sendEmail, {
+        foundationId: args.foundationId,
+        to: args.email,
+        subject: `You're invited to join ${foundation.name}`,
+        content: emailContent,
+        priority: "normal",
+        templateData: {
+          inviteeName: `${args.firstName} ${args.lastName}`,
+          inviterName: `${inviter.firstName} ${inviter.lastName}`,
+          role: args.role,
+          foundationName: foundation.name,
+        },
+      });
+      
+      console.log(`Invitation email scheduled successfully for ${args.email} (role: ${args.role})`);
+    } catch (error) {
+      console.error(`Failed to send invitation email to ${args.email}:`, error);
+      // Don't throw error - user record is already created
+    }
     
     return { success: true, userId };
+  },
+});
+
+/**
+ * Revoke user invitation
+ */
+export const revokeInvitation = mutation({
+  args: {
+    foundationId: v.id("foundations"),
+    userId: v.id("users"),
+  },
+  handler: async (ctx, args) => {
+    const currentUser = await authenticateAndAuthorize(ctx, args.foundationId, ["admin", "super_admin"]);
+    
+    // Get the user record to revoke
+    const userToRevoke = await ctx.db.get(args.userId);
+    if (!userToRevoke) {
+      throw new Error("User not found");
+    }
+    
+    // Check if user belongs to the same foundation
+    if (userToRevoke.foundationId !== args.foundationId) {
+      throw new Error("User does not belong to this foundation");
+    }
+    
+    // Check if this is actually an invitation (user has no clerkId and is inactive)
+    if (userToRevoke.clerkId || userToRevoke.isActive) {
+      throw new Error("Cannot revoke invitation - user has already activated their account");
+    }
+    
+    // Delete the user record (this revokes the invitation)
+    await ctx.db.delete(args.userId);
+    
+    console.log(`Invitation revoked: Deleted user record for ${userToRevoke.email} (ID: ${args.userId})`);
+    
+    // Create audit log
+    await ctx.db.insert("auditLogs", {
+      foundationId: args.foundationId,
+      userId: currentUser._id,
+      userEmail: currentUser.email,
+      userRole: currentUser.role,
+      action: "invitation_revoked",
+      entityType: "users",
+      entityId: args.userId,
+      description: `Revoked invitation for ${userToRevoke.firstName} ${userToRevoke.lastName} (${userToRevoke.email})`,
+      riskLevel: "medium",
+      createdAt: Date.now(),
+    });
+    
+    return { success: true };
+  },
+});
+
+/**
+ * Resend user invitation
+ */
+export const resendInvitation = mutation({
+  args: {
+    foundationId: v.id("foundations"),
+    userId: v.id("users"),
+  },
+  handler: async (ctx, args) => {
+    const currentUser = await authenticateAndAuthorize(ctx, args.foundationId, ["admin", "super_admin"]);
+    
+    // Get the user record to resend invitation to
+    const userToResend = await ctx.db.get(args.userId);
+    if (!userToResend) {
+      throw new Error("User not found");
+    }
+    
+    // Check if user belongs to the same foundation
+    if (userToResend.foundationId !== args.foundationId) {
+      throw new Error("User does not belong to this foundation");
+    }
+    
+    // Check if this is actually an invitation (user has no clerkId and is inactive)
+    if (userToResend.clerkId || userToResend.isActive) {
+      throw new Error("Cannot resend invitation - user has already activated their account");
+    }
+    
+    // Generate new invitation token and extend expiration
+    const newInvitationToken = crypto.randomUUID();
+    const newExpiresAt = Date.now() + (7 * 24 * 60 * 60 * 1000); // 7 days from now
+    
+    // Update user with new token
+    await ctx.db.patch(args.userId, {
+      invitationToken: newInvitationToken,
+      invitationExpiresAt: newExpiresAt,
+      updatedAt: Date.now(),
+    });
+    
+    // Get foundation details for email
+    const foundation = await ctx.db.get(args.foundationId);
+    if (!foundation) {
+      throw new Error("Foundation not found");
+    }
+    
+    // Get inviter details (current user)
+    const inviter = currentUser;
+    
+    // Resend invitation email
+    try {
+      await ctx.scheduler.runAfter(0, internal.communications.sendEmail, {
+        foundationId: args.foundationId,
+        to: userToResend.email,
+        subject: `You're invited to join ${foundation.name} (Resent)`,
+        content: generateInvitationEmailContent({
+          inviteeName: `${userToResend.firstName} ${userToResend.lastName}`,
+          inviterName: `${inviter.firstName} ${inviter.lastName}`,
+          role: userToResend.role,
+          foundationName: foundation.name,
+          signUpUrl: `${process.env.SITE_URL || 'https://theoyinbookefoundation.com'}/accept-invitation?token=${newInvitationToken}`,
+          expiresInDays: 7,
+        }),
+        templateData: {
+          inviteeName: `${userToResend.firstName} ${userToResend.lastName}`,
+          inviterName: `${inviter.firstName} ${inviter.lastName}`,
+          role: userToResend.role,
+          foundationName: foundation.name,
+        },
+      });
+      
+      console.log(`Invitation email resent to ${userToResend.email} for role ${userToResend.role}`);
+    } catch (error) {
+      console.error(`Failed to resend invitation email to ${userToResend.email}:`, error);
+      throw new Error("Failed to resend invitation email");
+    }
+    
+    // Create audit log
+    await ctx.db.insert("auditLogs", {
+      foundationId: args.foundationId,
+      userId: currentUser._id,
+      userEmail: currentUser.email,
+      userRole: currentUser.role,
+      action: "invitation_resent",
+      entityType: "users",
+      entityId: args.userId,
+      description: `Resent invitation to ${userToResend.firstName} ${userToResend.lastName} (${userToResend.email})`,
+      riskLevel: "low",
+      createdAt: Date.now(),
+    });
+    
+    return { success: true };
+  },
+});
+
+/**
+ * Validate invitation token and get user details
+ */
+export const validateInvitationToken = query({
+  args: {
+    token: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_invitation_token", (q) => q.eq("invitationToken", args.token))
+      .unique();
+
+    if (!user) {
+      throw new Error("Invalid invitation token");
+    }
+
+    // Check if token is expired
+    if (user.invitationExpiresAt && user.invitationExpiresAt < Date.now()) {
+      throw new Error("Invitation has expired");
+    }
+
+    // Check if invitation was already accepted
+    if (user.invitationAcceptedAt) {
+      throw new Error("Invitation has already been accepted");
+    }
+
+    // Check if user is already active
+    if (user.isActive && user.clerkId) {
+      throw new Error("Account is already active");
+    }
+
+    // Get foundation details
+    const foundation = await ctx.db.get(user.foundationId!);
+    
+    return {
+      user: {
+        _id: user._id,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        email: user.email,
+        role: user.role,
+      },
+      foundation: foundation ? {
+        _id: foundation._id,
+        name: foundation.name,
+      } : null,
+    };
+  },
+});
+
+/**
+ * Accept invitation and activate account
+ */
+export const acceptInvitation = mutation({
+  args: {
+    token: v.string(),
+    clerkId: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_invitation_token", (q) => q.eq("invitationToken", args.token))
+      .unique();
+
+    if (!user) {
+      throw new Error("Invalid invitation token");
+    }
+
+    // Check if token is expired
+    if (user.invitationExpiresAt && user.invitationExpiresAt < Date.now()) {
+      throw new Error("Invitation has expired");
+    }
+
+    // Check if invitation was already accepted
+    if (user.invitationAcceptedAt) {
+      throw new Error("Invitation has already been accepted");
+    }
+
+    // Update user record
+    await ctx.db.patch(user._id, {
+      clerkId: args.clerkId,
+      isActive: true,
+      invitationAcceptedAt: Date.now(),
+      lastLogin: Date.now(),
+      invitationToken: undefined, // Clear the token
+      updatedAt: Date.now(),
+      
+      // Set default communication preferences
+      communicationPreferences: {
+        emailNotifications: true,
+        smsNotifications: true,
+        academicAlerts: true,
+        financialAlerts: true,
+        administrativeNotifications: true,
+        marketingCommunications: false,
+      },
+    });
+
+    // Create audit log
+    await ctx.db.insert("auditLogs", {
+      foundationId: user.foundationId!,
+      userId: user._id,
+      userEmail: user.email,
+      userRole: user.role,
+      action: "invitation_accepted",
+      entityType: "users",
+      entityId: user._id,
+      description: `User accepted invitation and activated account`,
+      riskLevel: "low",
+      createdAt: Date.now(),
+    });
+
+    // Send welcome email
+    const foundation = await ctx.db.get(user.foundationId!);
+    if (foundation) {
+      await ctx.scheduler.runAfter(0, internal.notifications.sendNewUserWelcomeEmail, {
+        foundationId: user.foundationId!,
+        userEmail: user.email,
+        userName: `${user.firstName} ${user.lastName}`,
+        userRole: user.role,
+      });
+    }
+
+    return { 
+      success: true,
+      user: {
+        _id: user._id,
+        foundationId: user.foundationId,
+        role: user.role,
+      }
+    };
   },
 });
 

@@ -55,12 +55,19 @@ export default defineSchema({
       marketingCommunications: v.boolean(),
     })),
     
+    // Invitation system
+    invitationToken: v.optional(v.string()),
+    invitationExpiresAt: v.optional(v.number()),
+    invitedBy: v.optional(v.id("users")),
+    invitationAcceptedAt: v.optional(v.number()),
+    
     createdAt: v.number(),
     updatedAt: v.number()
   }).index("by_clerk_id", ["clerkId"])
     .index("by_foundation", ["foundationId"])
     .index("by_email", ["email"])
-    .index("by_role", ["foundationId", "role"]),
+    .index("by_role", ["foundationId", "role"])
+    .index("by_invitation_token", ["invitationToken"]),
 
   // ===================================
   // CONFIGURATION & SETTINGS
@@ -1676,7 +1683,7 @@ export default defineSchema({
     
     // Template information
     template: v.optional(v.string()),
-    templateData: v.optional(v.object({})),
+    templateData: v.optional(v.any()),
     
     // Status tracking
     status: v.union(
