@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { authenticateAndAuthorize } from "./auth";
 import { internal } from "./_generated/api";
+import { Id } from "./_generated/dataModel";
 
 /**
  * Get all fee categories for a foundation

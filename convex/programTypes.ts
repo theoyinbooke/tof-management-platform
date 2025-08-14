@@ -23,7 +23,7 @@ export const getByFoundation = query({
       .withIndex("by_foundation", (q) => q.eq("foundationId", args.foundationId))
       .collect();
 
-    return programTypes.sort((a, b) => a.sortOrder - b.sortOrder);
+    return programTypes.sort((a, b) => a.name.localeCompare(b.name));
   },
 });
 
@@ -49,7 +49,7 @@ export const getActiveByFoundation = query({
       .filter((q) => q.eq(q.field("isActive"), true))
       .collect();
 
-    return programTypes.sort((a, b) => a.sortOrder - b.sortOrder);
+    return programTypes.sort((a, b) => a.name.localeCompare(b.name));
   },
 });
 
@@ -61,16 +61,6 @@ export const create = mutation({
     foundationId: v.id("foundations"),
     name: v.string(),
     description: v.optional(v.string()),
-    category: v.union(
-      v.literal("educational"),
-      v.literal("mentorship"),
-      v.literal("workshop"),
-      v.literal("scholarship"),
-      v.literal("career"),
-      v.literal("life_skills"),
-      v.literal("other")
-    ),
-    sortOrder: v.number(),
     isActive: v.boolean(),
   },
   handler: async (ctx, args) => {
@@ -83,11 +73,16 @@ export const create = mutation({
     const programTypeId = await ctx.db.insert("programTypes", {
       foundationId: args.foundationId,
       name: args.name,
-      description: args.description,
-      category: args.category,
-      sortOrder: args.sortOrder,
+      description: args.description || "",
+      requiresApplication: false,
+      hasCapacityLimit: false,
+      hasFixedSchedule: false,
+      requiresAttendance: false,
+      requiresProgress: false,
+      requiresFeedback: false,
       isActive: args.isActive,
       createdAt: Date.now(),
+      updatedAt: Date.now(),
     });
 
     // Create audit log
@@ -150,8 +145,6 @@ export const update = mutation({
     await ctx.db.patch(args.programTypeId, {
       name: args.name || programType.name,
       description: args.description ?? programType.description,
-      category: args.category || programType.category,
-      sortOrder: args.sortOrder ?? programType.sortOrder,
       isActive: args.isActive ?? programType.isActive,
       updatedAt: Date.now(),
     });

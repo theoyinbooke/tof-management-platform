@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useMutation } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { CheckCircle, XCircle, Clock, ArrowLeft } from "lucide-react";
 import { toast } from "sonner";
 
-export default function PaymentCallbackPage() {
+function PaymentCallbackContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [status, setStatus] = useState<'processing' | 'success' | 'failed'>('processing');
@@ -182,5 +182,29 @@ export default function PaymentCallbackPage() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+function PaymentCallbackLoading() {
+  return (
+    <div className="container max-w-2xl mx-auto p-6">
+      <Card className="text-center">
+        <CardHeader>
+          <div className="flex justify-center mb-4">
+            <Clock className="w-16 h-16 text-blue-600 animate-spin" />
+          </div>
+          <CardTitle className="text-2xl">Loading Payment Details...</CardTitle>
+          <CardDescription>Please wait while we load your payment information</CardDescription>
+        </CardHeader>
+      </Card>
+    </div>
+  );
+}
+
+export default function PaymentCallbackPage() {
+  return (
+    <Suspense fallback={<PaymentCallbackLoading />}>
+      <PaymentCallbackContent />
+    </Suspense>
   );
 }

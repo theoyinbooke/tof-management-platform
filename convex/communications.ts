@@ -72,7 +72,7 @@ export const sendEmail = internalMutation({
       }
 
       // Real Resend integration
-      const emailData = {
+      const emailData: any = {
         from: 'TheOyinbooke Foundation <noreply@theoyinbookefoundation.org>',
         to: [args.to],
         subject: args.subject,
@@ -121,7 +121,6 @@ export const sendEmail = internalMutation({
       await ctx.db.patch(emailLogId, {
         status: "sent",
         sentAt: Date.now(),
-        externalId: result.id, // Resend email ID
         updatedAt: Date.now(),
       });
 
@@ -615,6 +614,274 @@ export const updateUserPreferences = mutation({
     // Update user preferences
     await ctx.db.patch(targetUserId, {
       communicationPreferences: args.preferences,
+      updatedAt: Date.now(),
+    });
+
+    return { success: true };
+  },
+});
+
+// ===================================
+// ADDITIONAL API FUNCTIONS FOR UI
+// ===================================
+
+/**
+ * Get communication by ID
+ */
+export const getCommunicationById = query({
+  args: {
+    communicationId: v.id("communicationLogs"),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) return null;
+
+    const communication = await ctx.db.get(args.communicationId);
+    if (!communication) return null;
+
+    // Get user to check foundation access
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_id", (q) => q.eq("clerkId", identity.subject))
+      .unique();
+
+    if (!user || user.foundationId !== communication.foundationId) {
+      return null;
+    }
+
+    return communication;
+  },
+});
+
+/**
+ * Get communications by foundation (for dashboard)
+ */
+export const getByFoundation = query({
+  args: {
+    foundationId: v.id("foundations"),
+    type: v.optional(v.union(v.literal("email"), v.literal("sms"))),
+    status: v.optional(v.union(
+      v.literal("pending"),
+      v.literal("sent"),
+      v.literal("failed"),
+      v.literal("delivered"),
+      v.literal("bounced")
+    )),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const user = await authenticateAndAuthorize(ctx, args.foundationId, [
+      "admin",
+      "super_admin",
+      "reviewer",
+    ]);
+
+    let query = ctx.db
+      .query("communicationLogs")
+      .withIndex("by_foundation", (q) => q.eq("foundationId", args.foundationId));
+
+    if (args.type) {
+      query = query.filter((q) => q.eq(q.field("type"), args.type));
+    }
+
+    if (args.status) {
+      query = query.filter((q) => q.eq(q.field("status"), args.status));
+    }
+
+    return await query
+      .order("desc")
+      .take(args.limit || 50);
+  },
+});
+
+/**
+ * Get communication statistics (for dashboard)
+ */
+export const getStatistics = query({
+  args: {
+    foundationId: v.id("foundations"),
+    dateRange: v.optional(v.object({
+      start: v.number(),
+      end: v.number(),
+    })),
+  },
+  handler: async (ctx, args) => {
+    const user = await authenticateAndAuthorize(ctx, args.foundationId, [
+      "admin",
+      "super_admin",
+      "reviewer",
+    ]);
+
+    let query = ctx.db
+      .query("communicationLogs")
+      .withIndex("by_foundation", (q) => q.eq("foundationId", args.foundationId));
+
+    if (args.dateRange) {
+      query = query.filter((q) => 
+        q.and(
+          q.gte(q.field("createdAt"), args.dateRange!.start),
+          q.lte(q.field("createdAt"), args.dateRange!.end)
+        )
+      );
+    }
+
+    const logs = await query.collect();
+
+    // Get today's logs
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayLogs = logs.filter(log => log.createdAt >= today.getTime());
+
+    const emailLogs = logs.filter(log => log.type === "email");
+    const smsLogs = logs.filter(log => log.type === "sms");
+
+    return {
+      totalMessages: logs.length,
+      todayMessages: todayLogs.length,
+      emailsSent: emailLogs.filter(log => log.status === "sent").length,
+      smsSent: smsLogs.filter(log => log.status === "sent").length,
+      pendingMessages: logs.filter(log => log.status === "pending").length,
+      emailDeliveryRate: emailLogs.length > 0 ? emailLogs.filter(log => log.status === "sent").length / emailLogs.length : 0,
+      smsDeliveryRate: smsLogs.length > 0 ? smsLogs.filter(log => log.status === "sent").length / smsLogs.length : 0,
+    };
+  },
+});
+
+/**
+ * Get notifications (for UI)
+ */
+export const getNotifications = query({
+  args: {
+    foundationId: v.id("foundations"),
+    unreadOnly: v.optional(v.boolean()),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const user = await authenticateAndAuthorize(ctx, args.foundationId, [
+      "admin",
+      "super_admin",
+      "reviewer",
+      "beneficiary",
+      "guardian",
+    ]);
+
+    // For now, return communication logs as notifications
+    // In a full implementation, you'd have a separate notifications table
+    let query = ctx.db
+      .query("communicationLogs")
+      .withIndex("by_foundation", (q) => q.eq("foundationId", args.foundationId));
+
+    if (args.unreadOnly) {
+      // Filter for recent high-priority messages
+      query = query.filter((q) => 
+        q.or(
+          q.eq(q.field("priority"), "high"),
+          q.eq(q.field("priority"), "urgent")
+        )
+      );
+    }
+
+    const logs = await query
+      .order("desc")
+      .take(args.limit || 20);
+
+    return logs.map(log => ({
+      _id: log._id,
+      subject: log.subject || "Notification",
+      content: log.content,
+      createdAt: log.createdAt,
+      priority: log.priority,
+      status: log.status,
+    }));
+  },
+});
+
+/**
+ * Resend failed communication
+ */
+export const resendCommunication = mutation({
+  args: {
+    communicationId: v.id("communicationLogs"),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Not authenticated");
+
+    const communication = await ctx.db.get(args.communicationId);
+    if (!communication) throw new Error("Communication not found");
+
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_id", (q) => q.eq("clerkId", identity.subject))
+      .unique();
+
+    if (!user || user.foundationId !== communication.foundationId) {
+      throw new Error("Access denied");
+    }
+
+    if (!["admin", "super_admin"].includes(user.role)) {
+      throw new Error("Insufficient permissions");
+    }
+
+    // Only resend failed communications
+    if (communication.status !== "failed") {
+      throw new Error("Only failed communications can be resent");
+    }
+
+    // Update attempt count and status
+    await ctx.db.patch(args.communicationId, {
+      status: "pending",
+      attemptCount: (communication.attemptCount || 1) + 1,
+      updatedAt: Date.now(),
+    });
+
+    // Trigger resend via scheduler
+    if (communication.type === "email") {
+      await ctx.scheduler.runAfter(0, internal.communications.sendEmail, {
+        foundationId: communication.foundationId,
+        to: communication.recipient,
+        subject: communication.subject || "Resent Message",
+        content: communication.content,
+        priority: communication.priority,
+      });
+    } else if (communication.type === "sms") {
+      await ctx.scheduler.runAfter(0, internal.communications.sendSMS, {
+        foundationId: communication.foundationId,
+        to: communication.recipient,
+        message: communication.content,
+        priority: communication.priority,
+      });
+    }
+
+    return { success: true };
+  },
+});
+
+/**
+ * Mark communication as read
+ */
+export const markAsRead = mutation({
+  args: {
+    communicationId: v.id("communicationLogs"),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Not authenticated");
+
+    const communication = await ctx.db.get(args.communicationId);
+    if (!communication) throw new Error("Communication not found");
+
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_id", (q) => q.eq("clerkId", identity.subject))
+      .unique();
+
+    if (!user || user.foundationId !== communication.foundationId) {
+      throw new Error("Access denied");
+    }
+
+    // Update communication as read (you might want to track this differently)
+    await ctx.db.patch(args.communicationId, {
       updatedAt: Date.now(),
     });
 
