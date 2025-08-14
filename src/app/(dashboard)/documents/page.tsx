@@ -11,6 +11,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Checkbox } from "@/components/ui/checkbox";
 import { 
   FileText,
   Upload,
@@ -28,7 +29,10 @@ import {
   FolderOpen,
   MoreHorizontal,
   Trash2,
-  Edit
+  Edit,
+  CheckSquare,
+  Square,
+  History
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -52,6 +56,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { DocumentUpload } from "@/components/documents/document-upload";
+import { DocumentVersionHistory } from "@/components/documents/document-version-history";
 
 export default function DocumentsPage() {
   const router = useRouter();
@@ -61,6 +66,9 @@ export default function DocumentsPage() {
   const [beneficiaryFilter, setBeneficiaryFilter] = useState<string>("all");
   const [searchTerm, setSearchTerm] = useState("");
   const [isUploadOpen, setIsUploadOpen] = useState(false);
+  const [selectedDocuments, setSelectedDocuments] = useState<Set<Id<"documents">>>(new Set());
+  const [bulkAction, setBulkAction] = useState<string>("");
+  const [versionHistoryDocumentId, setVersionHistoryDocumentId] = useState<Id<"documents"> | null>(null);
 
   // Get foundation ID from user
   const foundationId = user?.foundationId as Id<"foundations"> | undefined;
@@ -124,6 +132,60 @@ export default function DocumentsPage() {
     }
   };
 
+  const handleSelectDocument = (documentId: Id<"documents">, checked: boolean) => {
+    const newSelected = new Set(selectedDocuments);
+    if (checked) {
+      newSelected.add(documentId);
+    } else {
+      newSelected.delete(documentId);
+    }
+    setSelectedDocuments(newSelected);
+  };
+
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedDocuments(new Set(filteredDocuments.map(doc => doc._id)));
+    } else {
+      setSelectedDocuments(new Set());
+    }
+  };
+
+  const handleBulkAction = async () => {
+    if (selectedDocuments.size === 0 || !bulkAction) return;
+
+    try {
+      const documentIds = Array.from(selectedDocuments);
+      
+      switch (bulkAction) {
+        case "approve":
+          await Promise.all(
+            documentIds.map(id => updateStatus({ documentId: id, status: "approved" as any }))
+          );
+          toast.success(`${documentIds.length} documents approved`);
+          break;
+        case "reject":
+          await Promise.all(
+            documentIds.map(id => updateStatus({ documentId: id, status: "rejected" as any }))
+          );
+          toast.success(`${documentIds.length} documents rejected`);
+          break;
+        case "delete":
+          await Promise.all(
+            documentIds.map(id => deleteDocument({ documentId: id }))
+          );
+          toast.success(`${documentIds.length} documents deleted`);
+          break;
+        default:
+          return;
+      }
+      
+      setSelectedDocuments(new Set());
+      setBulkAction("");
+    } catch (error) {
+      toast.error("Failed to perform bulk action");
+    }
+  };
+
   const getStatusBadge = (status: string) => {
     switch (status) {
       case "pending_review":
@@ -149,6 +211,20 @@ export default function DocumentsPage() {
 
   const getDocumentTypeLabel = (type: string) => {
     return type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+  };
+
+  const getDisplayFileName = (fileName: string, maxLength: number = 50) => {
+    if (fileName.length <= maxLength) return fileName;
+    
+    const extension = fileName.split('.').pop();
+    const nameWithoutExt = fileName.substring(0, fileName.lastIndexOf('.'));
+    const maxNameLength = maxLength - (extension ? extension.length + 4 : 3); // Account for "..." and extension
+    
+    if (nameWithoutExt.length > maxNameLength) {
+      return `${nameWithoutExt.substring(0, maxNameLength)}...${extension ? '.' + extension : ''}`;
+    }
+    
+    return fileName;
   };
 
   // Filter documents based on search
@@ -245,6 +321,49 @@ export default function DocumentsPage() {
           </Card>
         </div>
 
+        {/* Bulk Actions Bar */}
+        {selectedDocuments.size > 0 && (user?.role === "admin" || user?.role === "super_admin" || user?.role === "reviewer") && (
+          <Card className="bg-blue-50 border-blue-200">
+            <CardContent className="py-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-4">
+                  <span className="text-sm font-medium">
+                    {selectedDocuments.size} document{selectedDocuments.size !== 1 ? 's' : ''} selected
+                  </span>
+                  <Select value={bulkAction} onValueChange={setBulkAction}>
+                    <SelectTrigger className="w-48">
+                      <SelectValue placeholder="Choose action..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="approve">Approve Selected</SelectItem>
+                      <SelectItem value="reject">Reject Selected</SelectItem>
+                      {(user?.role === "admin" || user?.role === "super_admin") && (
+                        <SelectItem value="delete">Delete Selected</SelectItem>
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    onClick={handleBulkAction}
+                    disabled={!bulkAction}
+                    size="sm"
+                  >
+                    Apply Action
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => setSelectedDocuments(new Set())}
+                    size="sm"
+                  >
+                    Clear Selection
+                  </Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        )}
+
         {/* Filters and Search */}
         <Card>
           <CardHeader>
@@ -323,59 +442,85 @@ export default function DocumentsPage() {
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto">
-              <table className="w-full">
+              <table className="w-full table-fixed min-w-[800px]">
                 <thead>
                   <tr className="border-b">
-                    <th className="text-left p-2 font-medium text-gray-700">Document</th>
-                    <th className="text-left p-2 font-medium text-gray-700">Type</th>
-                    <th className="text-left p-2 font-medium text-gray-700">Beneficiary</th>
-                    <th className="text-left p-2 font-medium text-gray-700">Size</th>
-                    <th className="text-left p-2 font-medium text-gray-700">Uploaded</th>
-                    <th className="text-left p-2 font-medium text-gray-700">Status</th>
-                    <th className="text-left p-2 font-medium text-gray-700">Actions</th>
+                    {(user?.role === "admin" || user?.role === "super_admin" || user?.role === "reviewer") && (
+                      <th className="text-left p-2 font-medium text-gray-700 w-12">
+                        <Checkbox
+                          checked={filteredDocuments.length > 0 && selectedDocuments.size === filteredDocuments.length}
+                          onCheckedChange={(checked) => handleSelectAll(checked as boolean)}
+                        />
+                      </th>
+                    )}
+                    <th className="text-left p-2 font-medium text-gray-700 w-80">Document</th>
+                    <th className="text-left p-2 font-medium text-gray-700 w-32">Type</th>
+                    <th className="text-left p-2 font-medium text-gray-700 w-40">Beneficiary</th>
+                    <th className="text-left p-2 font-medium text-gray-700 w-24">Size</th>
+                    <th className="text-left p-2 font-medium text-gray-700 w-36">Uploaded</th>
+                    <th className="text-left p-2 font-medium text-gray-700 w-32">Status</th>
+                    <th className="text-left p-2 font-medium text-gray-700 w-24">Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredDocuments.map((doc) => (
                     <tr key={doc._id} className="border-b hover:bg-gray-50">
+                      {(user?.role === "admin" || user?.role === "super_admin" || user?.role === "reviewer") && (
+                        <td className="p-2">
+                          <Checkbox
+                            checked={selectedDocuments.has(doc._id)}
+                            onCheckedChange={(checked) => handleSelectDocument(doc._id, checked as boolean)}
+                          />
+                        </td>
+                      )}
                       <td className="p-2">
-                        <div className="flex items-center gap-3">
-                          <span className="text-2xl">{getDocumentIcon(doc.fileType)}</span>
-                          <div>
-                            <div className="font-medium">{doc.fileName}</div>
+                        <div className="flex items-center gap-3 min-w-0">
+                          <span className="text-2xl flex-shrink-0">{getDocumentIcon(doc.fileType)}</span>
+                          <div className="min-w-0 flex-1">
+                            <div 
+                              className="font-medium text-sm break-words hyphens-auto"
+                              style={{ 
+                                wordBreak: 'break-word',
+                                overflowWrap: 'anywhere',
+                                lineHeight: '1.4'
+                              }}
+                              title={doc.fileName}
+                            >
+                              {doc.fileName}
+                            </div>
                             {doc.description && (
-                              <div className="text-sm text-gray-600">{doc.description}</div>
+                              <div className="text-xs text-gray-600 mt-1 break-words">{doc.description}</div>
                             )}
                           </div>
                         </div>
                       </td>
                       <td className="p-2">
-                        <div className="text-sm font-medium">
+                        <div className="text-xs font-medium truncate" title={getDocumentTypeLabel(doc.documentType)}>
                           {getDocumentTypeLabel(doc.documentType)}
                         </div>
                       </td>
                       <td className="p-2">
                         {doc.beneficiaryUser ? (
-                          <div>
-                            <div className="font-medium">
+                          <div className="min-w-0">
+                            <div className="font-medium text-xs truncate" title={`${doc.beneficiaryUser.firstName} ${doc.beneficiaryUser.lastName}`}>
                               {doc.beneficiaryUser.firstName} {doc.beneficiaryUser.lastName}
                             </div>
-                            <div className="text-sm text-gray-600">
+                            <div className="text-xs text-gray-600 truncate">
                               {doc.beneficiary?.beneficiaryNumber}
                             </div>
                           </div>
                         ) : (
-                          <span className="text-gray-500">General</span>
+                          <span className="text-gray-500 text-xs">General</span>
                         )}
                       </td>
                       <td className="p-2">
-                        <div className="text-sm">{formatFileSize(doc.fileSize)}</div>
+                        <div className="text-xs">{formatFileSize(doc.fileSize)}</div>
                       </td>
                       <td className="p-2">
-                        <div className="text-sm">
+                        <div className="text-xs">
                           {formatDate(new Date(doc.createdAt))}
                         </div>
-                        <div className="text-xs text-gray-600">
+                        <div className="text-xs text-gray-600 truncate" title={`by ${doc.uploadedByUser?.firstName} ${doc.uploadedByUser?.lastName}`}>
                           by {doc.uploadedByUser?.firstName} {doc.uploadedByUser?.lastName}
                         </div>
                       </td>
@@ -402,6 +547,12 @@ export default function DocumentsPage() {
                             >
                               <Download className="w-4 h-4 mr-2" />
                               Download
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              onClick={() => setVersionHistoryDocumentId(doc._id)}
+                            >
+                              <History className="w-4 h-4 mr-2" />
+                              Version History
                             </DropdownMenuItem>
                             {(user?.role === "admin" || user?.role === "super_admin" || user?.role === "reviewer") && (
                               <>
@@ -463,21 +614,52 @@ export default function DocumentsPage() {
 
         {/* Upload Dialog */}
         <Dialog open={isUploadOpen} onOpenChange={setIsUploadOpen}>
-          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
+          <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
+            <DialogHeader className="flex-shrink-0">
               <DialogTitle>Upload Document</DialogTitle>
               <DialogDescription>
                 Upload a new document to the system
               </DialogDescription>
             </DialogHeader>
-            <DocumentUpload
-              foundationId={foundationId!}
-              onUploadComplete={(documentId) => {
-                setIsUploadOpen(false);
-                toast.success("Document uploaded successfully!");
-              }}
-              onCancel={() => setIsUploadOpen(false)}
-            />
+            <div className="flex-1 overflow-y-auto">
+              <DocumentUpload
+                foundationId={foundationId!}
+                onUploadComplete={(documentId) => {
+                  setIsUploadOpen(false);
+                  toast.success("Document uploaded successfully!");
+                }}
+                onCancel={() => setIsUploadOpen(false)}
+              />
+            </div>
+          </DialogContent>
+        </Dialog>
+
+        {/* Version History Dialog */}
+        <Dialog 
+          open={versionHistoryDocumentId !== null} 
+          onOpenChange={(open) => !open && setVersionHistoryDocumentId(null)}
+        >
+          <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <History className="w-5 h-5" />
+                Document Version History
+              </DialogTitle>
+              <DialogDescription>
+                View all changes and actions performed on this document
+              </DialogDescription>
+            </DialogHeader>
+            {versionHistoryDocumentId && (
+              <DocumentVersionHistory 
+                documentId={versionHistoryDocumentId}
+                className="border-0 shadow-none"
+              />
+            )}
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setVersionHistoryDocumentId(null)}>
+                Close
+              </Button>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
       </div>

@@ -135,7 +135,7 @@ export function CommunicationDashboard({ foundationId }: CommunicationDashboardP
             <RefreshCw className="h-4 w-4 mr-2" />
             Refresh
           </Button>
-          <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700">
+          <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white">
             <Plus className="h-4 w-4 mr-2" />
             Send Bulk Message
           </Button>
@@ -350,7 +350,7 @@ export function CommunicationDashboard({ foundationId }: CommunicationDashboardP
                   <CardTitle>Communication Templates</CardTitle>
                   <CardDescription>Manage email and SMS templates</CardDescription>
                 </div>
-                <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700">
+                <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white">
                   <Plus className="h-4 w-4 mr-2" />
                   Create Template
                 </Button>
@@ -399,7 +399,7 @@ export function CommunicationDashboard({ foundationId }: CommunicationDashboardP
                 <p className="text-gray-600 mb-4">
                   Send emails and SMS to multiple beneficiaries, guardians, or admins at once.
                 </p>
-                <Button className="bg-emerald-600 hover:bg-emerald-700">
+                <Button className="bg-emerald-600 hover:bg-emerald-700 text-white">
                   <Send className="h-4 w-4 mr-2" />
                   Create Bulk Message
                 </Button>

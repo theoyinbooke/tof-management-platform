@@ -254,7 +254,7 @@ export function MessagingDashboard({ foundationId, currentUserId }: MessagingDas
             <h1 className="text-xl font-semibold text-gray-900">Messages</h1>
             <Dialog open={isNewChatOpen} onOpenChange={setIsNewChatOpen}>
               <DialogTrigger asChild>
-                <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700">
+                <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white">
                   <Plus className="h-4 w-4 mr-2" />
                   New Chat
                 </Button>
@@ -347,7 +347,7 @@ export function MessagingDashboard({ foundationId, currentUserId }: MessagingDas
                   <Button
                     onClick={handleCreateConversation}
                     disabled={selectedUsers.length === 0}
-                    className="bg-emerald-600 hover:bg-emerald-700"
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white"
                   >
                     Create Conversation
                   </Button>
@@ -445,7 +445,7 @@ export function MessagingDashboard({ foundationId, currentUserId }: MessagingDas
                 </p>
                 <Button 
                   onClick={() => setIsNewChatOpen(true)}
-                  className="bg-emerald-600 hover:bg-emerald-700"
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white"
                 >
                   <Plus className="h-4 w-4 mr-2" />
                   New Chat
@@ -620,7 +620,7 @@ export function MessagingDashboard({ foundationId, currentUserId }: MessagingDas
                 <Button
                   onClick={handleSendMessage}
                   disabled={!newMessage.trim() || isLoading}
-                  className="bg-emerald-600 hover:bg-emerald-700"
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white"
                 >
                   <Send className="h-4 w-4" />
                 </Button>
@@ -636,7 +636,7 @@ export function MessagingDashboard({ foundationId, currentUserId }: MessagingDas
               <p className="text-gray-600 mb-6">Choose a conversation from the sidebar to start messaging</p>
               <Button 
                 onClick={() => setIsNewChatOpen(true)}
-                className="bg-emerald-600 hover:bg-emerald-700"
+                className="bg-emerald-600 hover:bg-emerald-700 text-white"
               >
                 <Plus className="h-4 w-4 mr-2" />
                 Start New Chat

@@ -235,7 +235,7 @@ export function InviteUserDialog({ onInviteSent }: InviteUserDialogProps) {
                   </Select>
                   {selectedRole && (
                     <FormDescription className="flex items-start gap-2 text-sm">
-                      <div className="mt-0.5">{roleIcons[selectedRole]}</div>
+                      <span className="mt-0.5 inline-flex">{roleIcons[selectedRole]}</span>
                       <span>{roleDescriptions[selectedRole]}</span>
                     </FormDescription>
                   )}

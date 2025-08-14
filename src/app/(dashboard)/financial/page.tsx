@@ -43,6 +43,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { PaymentProcessor } from "@/components/financial/payment-processor";
 
 export default function FinancialPage() {
   const router = useRouter();
@@ -375,6 +376,14 @@ export default function FinancialPage() {
                                     <CheckCircle className="w-4 h-4 mr-2" />
                                     Approve
                                   </DropdownMenuItem>
+                                )}
+                                {(record.status === "approved" || record.status === "pending") && foundationId && (
+                                  <div className="px-2 py-1">
+                                    <PaymentProcessor 
+                                      financialRecordId={record._id}
+                                      foundationId={foundationId}
+                                    />
+                                  </div>
                                 )}
                                 {record.status === "approved" && (
                                   <DropdownMenuItem

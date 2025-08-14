@@ -1122,3 +1122,361 @@ export const getFinancialDashboard = query({
     };
   },
 });
+
+// ===================================
+// ENHANCED PAYMENT MANAGEMENT
+// ===================================
+
+/**
+ * Mark financial record as paid - FOR EXPENSES AND OTHER RECORDS
+ */
+export const markFinancialRecordPaid = mutation({
+  args: {
+    recordId: v.id("financialRecords"),
+    paidDate: v.optional(v.string()),
+    receiptNumber: v.optional(v.string()),
+    paymentReference: v.optional(v.string()),
+    notes: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const record = await ctx.db.get(args.recordId);
+    if (!record) {
+      throw new Error("Financial record not found");
+    }
+    
+    const user = await authenticateAndAuthorize(ctx, record.foundationId, ["admin", "super_admin"]);
+    
+    // Update record status
+    await ctx.db.patch(args.recordId, {
+      status: "paid",
+      paidDate: args.paidDate || new Date().toISOString(),
+      receiptNumber: args.receiptNumber,
+      paymentReference: args.paymentReference,
+      internalNotes: args.notes,
+      updatedAt: Date.now(),
+    });
+    
+    // Create audit log
+    await ctx.db.insert("auditLogs", {
+      foundationId: record.foundationId,
+      userId: user._id,
+      userEmail: user.email,
+      userRole: user.role,
+      action: "mark_paid",
+      entityType: "financial_records",
+      entityId: args.recordId,
+      description: `Marked ${record.transactionType} record as paid: ${record.amount} ${record.currency}`,
+      riskLevel: "medium",
+      createdAt: Date.now(),
+    });
+    
+    return { success: true };
+  },
+});
+
+// ===================================
+// PAYMENT PROCESSING SYSTEM
+// ===================================
+
+/**
+ * Get financial record by ID with details
+ */
+export const getFinancialRecordById = query({
+  args: {
+    recordId: v.id("financialRecords"),
+    foundationId: v.id("foundations"),
+  },
+  handler: async (ctx, args) => {
+    await authenticateAndAuthorize(ctx, args.foundationId, [
+      "admin",
+      "super_admin",
+      "beneficiary",
+      "guardian",
+    ]);
+
+    const record = await ctx.db.get(args.recordId);
+    if (!record || record.foundationId !== args.foundationId) {
+      throw new Error("Financial record not found");
+    }
+
+    // Get related data
+    const beneficiary = record.beneficiaryId 
+      ? await ctx.db.get(record.beneficiaryId)
+      : null;
+    
+    const beneficiaryUser = beneficiary?.userId 
+      ? await ctx.db.get(beneficiary.userId)
+      : null;
+    
+    const feeCategory = record.feeCategoryId 
+      ? await ctx.db.get(record.feeCategoryId)
+      : null;
+    
+    const session = record.academicSessionId 
+      ? await ctx.db.get(record.academicSessionId)
+      : null;
+
+    return {
+      ...record,
+      beneficiary,
+      beneficiaryUser,
+      feeCategory,
+      session,
+    };
+  },
+});
+
+/**
+ * Process manual payment
+ */
+export const processManualPayment = mutation({
+  args: {
+    financialRecordId: v.id("financialRecords"),
+    foundationId: v.id("foundations"),
+    amount: v.number(),
+    currency: v.union(v.literal("NGN"), v.literal("USD")),
+    paymentMethod: v.string(),
+    referenceNumber: v.string(),
+    notes: v.optional(v.string()),
+    receiptId: v.optional(v.id("_storage")),
+  },
+  handler: async (ctx, args) => {
+    const user = await authenticateAndAuthorize(ctx, args.foundationId, [
+      "admin",
+      "super_admin",
+    ]);
+
+    const financialRecord = await ctx.db.get(args.financialRecordId);
+    if (!financialRecord || financialRecord.foundationId !== args.foundationId) {
+      throw new Error("Financial record not found");
+    }
+
+    // Generate receipt number
+    const receiptNumber = `RCP-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+
+    // Update financial record
+    await ctx.db.patch(args.financialRecordId, {
+      status: "paid",
+      paidDate: new Date().toISOString(),
+      receiptNumber,
+      paymentReference: args.referenceNumber,
+      internalNotes: args.notes,
+      updatedAt: Date.now(),
+    });
+
+    // Create audit log
+    await ctx.db.insert("auditLogs", {
+      foundationId: args.foundationId,
+      userId: user._id,
+      userEmail: user.email,
+      userRole: user.role,
+      action: "manual_payment_processed",
+      entityType: "financialRecords",
+      entityId: args.financialRecordId,
+      description: `Processed manual payment of ${args.currency} ${args.amount}`,
+      riskLevel: "medium",
+      createdAt: Date.now(),
+    });
+
+    return { 
+      success: true, 
+      receiptNumber,
+      paidAmount: args.amount 
+    };
+  },
+});
+
+/**
+ * Initiate Paystack payment
+ */
+export const initiatePaystackPayment = mutation({
+  args: {
+    financialRecordId: v.id("financialRecords"),
+    foundationId: v.id("foundations"),
+    amount: v.number(),
+    currency: v.union(v.literal("NGN"), v.literal("USD")),
+    callbackUrl: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const user = await authenticateAndAuthorize(ctx, args.foundationId, [
+      "admin",
+      "super_admin",
+      "beneficiary",
+      "guardian",
+    ]);
+
+    const financialRecord = await ctx.db.get(args.financialRecordId);
+    if (!financialRecord || financialRecord.foundationId !== args.foundationId) {
+      throw new Error("Financial record not found");
+    }
+
+    // Check if Paystack is enabled
+    const paystackConfig = {
+      enabled: process.env.PAYSTACK_PUBLIC_KEY ? true : false,
+      publicKey: process.env.PAYSTACK_PUBLIC_KEY,
+      secretKey: process.env.PAYSTACK_SECRET_KEY,
+    };
+
+    if (!paystackConfig.enabled) {
+      throw new Error("Paystack payment gateway is not configured");
+    }
+
+    // Generate payment reference
+    const reference = `TOF-${args.foundationId}-${args.financialRecordId}-${Date.now()}`;
+
+    // Create payment session (this would be implemented with actual Paystack API)
+    const paymentSession = {
+      reference,
+      authorizationUrl: `https://checkout.paystack.com/${reference}`,
+      amount: args.amount * 100, // Paystack expects kobo for NGN
+      currency: args.currency,
+    };
+
+    // Create audit log
+    await ctx.db.insert("auditLogs", {
+      foundationId: args.foundationId,
+      userId: user._id,
+      userEmail: user.email,
+      userRole: user.role,
+      action: "paystack_payment_initiated",
+      entityType: "financialRecords",
+      entityId: args.financialRecordId,
+      description: `Initiated Paystack payment for ${args.currency} ${args.amount}`,
+      riskLevel: "low",
+      createdAt: Date.now(),
+    });
+
+    return paymentSession;
+  },
+});
+
+/**
+ * Initiate Flutterwave payment
+ */
+export const initiateFlutterwavePayment = mutation({
+  args: {
+    financialRecordId: v.id("financialRecords"),
+    foundationId: v.id("foundations"),
+    amount: v.number(),
+    currency: v.union(v.literal("NGN"), v.literal("USD")),
+    callbackUrl: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const user = await authenticateAndAuthorize(ctx, args.foundationId, [
+      "admin",
+      "super_admin",
+      "beneficiary",
+      "guardian",
+    ]);
+
+    const financialRecord = await ctx.db.get(args.financialRecordId);
+    if (!financialRecord || financialRecord.foundationId !== args.foundationId) {
+      throw new Error("Financial record not found");
+    }
+
+    // Check if Flutterwave is enabled
+    const flutterwaveConfig = {
+      enabled: process.env.FLUTTERWAVE_PUBLIC_KEY ? true : false,
+      publicKey: process.env.FLUTTERWAVE_PUBLIC_KEY,
+      secretKey: process.env.FLUTTERWAVE_SECRET_KEY,
+    };
+
+    if (!flutterwaveConfig.enabled) {
+      throw new Error("Flutterwave payment gateway is not configured");
+    }
+
+    // Generate payment reference
+    const reference = `TOF-${args.foundationId}-${args.financialRecordId}-${Date.now()}`;
+
+    // Create payment session (this would be implemented with actual Flutterwave API)
+    const paymentSession = {
+      reference,
+      link: `https://checkout.flutterwave.com/v3/hosted/pay/${reference}`,
+      amount: args.amount,
+      currency: args.currency,
+    };
+
+    // Create audit log
+    await ctx.db.insert("auditLogs", {
+      foundationId: args.foundationId,
+      userId: user._id,
+      userEmail: user.email,
+      userRole: user.role,
+      action: "flutterwave_payment_initiated",
+      entityType: "financialRecords",
+      entityId: args.financialRecordId,
+      description: `Initiated Flutterwave payment for ${args.currency} ${args.amount}`,
+      riskLevel: "low",
+      createdAt: Date.now(),
+    });
+
+    return paymentSession;
+  },
+});
+
+/**
+ * Handle payment gateway callback
+ */
+export const handlePaymentCallback = mutation({
+  args: {
+    gateway: v.union(v.literal("paystack"), v.literal("flutterwave")),
+    reference: v.string(),
+    status: v.string(),
+    transactionId: v.string(),
+    amount: v.number(),
+    currency: v.union(v.literal("NGN"), v.literal("USD")),
+  },
+  handler: async (ctx, args) => {
+    // Parse reference to get foundation and financial record IDs
+    const refParts = args.reference.split('-');
+    if (refParts.length < 4 || refParts[0] !== 'TOF') {
+      throw new Error("Invalid payment reference");
+    }
+
+    const foundationId = refParts[1] as Id<"foundations">;
+    const financialRecordId = refParts[2] as Id<"financialRecords">;
+
+    // Verify foundation and financial record exist
+    const foundation = await ctx.db.get(foundationId);
+    const financialRecord = await ctx.db.get(financialRecordId);
+
+    if (!foundation || !financialRecord) {
+      throw new Error("Invalid payment reference");
+    }
+
+    if (args.status === "successful" || args.status === "success") {
+      // Update financial record as paid
+      await ctx.db.patch(financialRecordId, {
+        status: "paid",
+        paidDate: new Date().toISOString(),
+        paymentReference: args.transactionId,
+        receiptNumber: `${args.gateway.toUpperCase()}-${args.transactionId}`,
+        updatedAt: Date.now(),
+      });
+
+      // Create audit log
+      await ctx.db.insert("auditLogs", {
+        foundationId,
+        action: `${args.gateway}_payment_completed`,
+        entityType: "financialRecords",
+        entityId: financialRecordId,
+        description: `Payment completed via ${args.gateway}: ${args.currency} ${args.amount}`,
+        riskLevel: "low",
+        createdAt: Date.now(),
+      });
+    } else {
+      // Handle failed payment
+      await ctx.db.insert("auditLogs", {
+        foundationId,
+        action: `${args.gateway}_payment_failed`,
+        entityType: "financialRecords",
+        entityId: financialRecordId,
+        description: `Payment failed via ${args.gateway}: ${args.currency} ${args.amount}`,
+        riskLevel: "medium",
+        createdAt: Date.now(),
+      });
+    }
+
+    return { success: true, status: args.status };
+  },
+});

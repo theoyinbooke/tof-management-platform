@@ -28,15 +28,39 @@ async function getOrCreateDocumentType(
     return existingType._id;
   }
 
-  // Create new document type
+  // Map document type to category
+  const getCategoryForType = (type: string) => {
+    switch (type) {
+      case "academic_transcript":
+      case "school_certificate":
+        return "academic";
+      case "financial_document":
+      case "proof_of_income":
+        return "financial";
+      case "identity_document":
+      case "recommendation_letter":
+        return "personal";
+      case "medical_document":
+        return "medical";
+      default:
+        return "personal";
+    }
+  };
+
+  // Create new document type with all required fields
   return await ctx.db.insert("documentTypes", {
     foundationId,
     name: typeName,
     description: `${typeName.replace(/_/g, ' ')} documents`,
+    isRequired: false,
     requiredFor: [],
-    validityPeriod: null,
+    allowedFormats: ["pdf", "jpg", "jpeg", "png", "doc", "docx"],
+    maxFileSize: 10, // 10MB
+    category: getCategoryForType(typeName) as any,
+    requiresApproval: true,
     isActive: true,
     createdAt: Date.now(),
+    updatedAt: Date.now(),
   });
 }
 
@@ -457,6 +481,66 @@ export const getDownloadUrl = mutation({
     });
 
     return downloadUrl;
+  },
+});
+
+/**
+ * Get document by ID
+ */
+export const getById = query({
+  args: {
+    documentId: v.id("documents"),
+  },
+  handler: async (ctx, args) => {
+    const document = await ctx.db.get(args.documentId);
+    if (!document) {
+      return null;
+    }
+
+    const user = await authenticateAndAuthorize(ctx, document.foundationId, [
+      "admin",
+      "super_admin",
+      "reviewer",
+      "beneficiary",
+      "guardian",
+    ]);
+
+    // Check access permissions
+    if (user.role === "beneficiary" || user.role === "guardian") {
+      if (document.accessLevel !== "public") {
+        const userBeneficiary = await ctx.db
+          .query("beneficiaries")
+          .withIndex("by_user", (q) => q.eq("userId", user._id))
+          .unique();
+        
+        if (!userBeneficiary || 
+            (document.belongsTo === "beneficiary" && document.entityId !== userBeneficiary._id)) {
+          throw new Error("Access denied");
+        }
+      }
+    }
+
+    // Get related data
+    const beneficiary = document.belongsTo === "beneficiary" && document.entityId 
+      ? await ctx.db.get(document.entityId as any) 
+      : null;
+    const beneficiaryUser = beneficiary ? await ctx.db.get((beneficiary as any).userId) : null;
+    const uploadedByUser = await ctx.db.get(document.uploadedBy);
+    const reviewedByUser = document.reviewedBy ? await ctx.db.get(document.reviewedBy) : null;
+    const documentType = await ctx.db.get(document.documentTypeId);
+
+    return {
+      ...document,
+      beneficiary,
+      beneficiaryUser,
+      uploadedByUser,
+      reviewedByUser,
+      documentType: documentType?.name || "unknown",
+      documentTypeName: documentType?.name || "unknown",
+      // Map field names for compatibility with UI components
+      reviewDate: document.reviewedAt,
+      reviewNotes: document.reviewComments,
+    };
   },
 });
 

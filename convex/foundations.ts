@@ -40,6 +40,44 @@ export const getAll = query({
 });
 
 /**
+ * Get foundation settings including payment gateway configuration
+ */
+export const getSettings = query({
+  args: {
+    foundationId: v.id("foundations"),
+  },
+  handler: async (ctx, args) => {
+    await authenticateAndAuthorize(ctx, args.foundationId, [
+      "admin",
+      "super_admin",
+      "beneficiary",
+      "guardian",
+      "reviewer",
+    ]);
+
+    const foundation = await ctx.db.get(args.foundationId);
+    if (!foundation) {
+      throw new Error("Foundation not found");
+    }
+
+    // Return foundation settings with payment gateway configuration
+    return {
+      ...foundation,
+      paymentGateways: {
+        paystack: {
+          enabled: !!process.env.PAYSTACK_PUBLIC_KEY,
+          publicKey: process.env.PAYSTACK_PUBLIC_KEY,
+        },
+        flutterwave: {
+          enabled: !!process.env.FLUTTERWAVE_PUBLIC_KEY,
+          publicKey: process.env.FLUTTERWAVE_PUBLIC_KEY,
+        },
+      },
+    };
+  },
+});
+
+/**
  * Get foundation by ID
  */
 export const getById = query({

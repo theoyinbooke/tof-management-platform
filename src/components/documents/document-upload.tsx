@@ -167,9 +167,9 @@ export function DocumentUpload({
   };
 
   return (
-    <Card className="w-full max-w-2xl">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
+    <Card className="w-full">
+      <CardHeader className="pb-4">
+        <CardTitle className="flex items-center gap-2 text-lg">
           <Upload className="w-5 h-5" />
           Upload Document
         </CardTitle>
@@ -177,10 +177,10 @@ export function DocumentUpload({
           Upload a new document to the system. Maximum file size: {formatFileSize(MAX_FILE_SIZE)}
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-6">
+      <CardContent className="space-y-4">
         {/* File Upload Area */}
         <div
-          className={`border-2 border-dashed rounded-lg p-8 text-center transition-colors ${
+          className={`border-2 border-dashed rounded-lg p-6 text-center transition-colors ${
             dragActive
               ? "border-primary bg-primary/5"
               : file
@@ -193,13 +193,23 @@ export function DocumentUpload({
           onDrop={handleDrop}
         >
           {file ? (
-            <div className="space-y-4">
+            <div className="space-y-3">
               <div className="flex items-center justify-center">
-                <CheckCircle className="w-12 h-12 text-green-500" />
+                <CheckCircle className="w-10 h-10 text-green-500" />
               </div>
-              <div>
-                <p className="font-medium text-green-700">{file.name}</p>
-                <p className="text-sm text-green-600">
+              <div className="min-w-0 max-w-full">
+                <p 
+                  className="font-medium text-green-700 text-sm break-words"
+                  style={{ 
+                    wordBreak: 'break-word',
+                    overflowWrap: 'anywhere',
+                    lineHeight: '1.3'
+                  }}
+                  title={file.name}
+                >
+                  {file.name}
+                </p>
+                <p className="text-xs text-green-600">
                   {ALLOWED_FILE_TYPES[file.type as keyof typeof ALLOWED_FILE_TYPES]} • {formatFileSize(file.size)}
                 </p>
               </div>
@@ -213,15 +223,15 @@ export function DocumentUpload({
               </Button>
             </div>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-3">
               <div className="flex items-center justify-center">
-                <FileText className="w-12 h-12 text-gray-400" />
+                <FileText className="w-10 h-10 text-gray-400" />
               </div>
               <div>
-                <p className="text-lg font-medium text-gray-900">
+                <p className="font-medium text-gray-900">
                   Drop your file here, or click to browse
                 </p>
-                <p className="text-sm text-gray-600 mt-1">
+                <p className="text-xs text-gray-600 mt-1">
                   Supported formats: PDF, JPEG, PNG, Word documents
                 </p>
               </div>
@@ -234,6 +244,7 @@ export function DocumentUpload({
               />
               <Button
                 variant="outline"
+                size="sm"
                 onClick={() => document.getElementById('file-upload')?.click()}
               >
                 <Upload className="w-4 h-4 mr-2" />
@@ -296,7 +307,7 @@ export function DocumentUpload({
               value={formData.description}
               onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
               placeholder="Add any additional details about this document..."
-              className="min-h-[100px]"
+              className="min-h-[80px] max-h-[120px]"
             />
           </div>
         </div>

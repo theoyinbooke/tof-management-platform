@@ -11,6 +11,53 @@ function generateApplicationNumber(): string {
   return `TOF-${year}-${random}`;
 }
 
+// Get review counts for sidebar
+export const getReviewCounts = query({
+  args: {
+    foundationId: v.id("foundations"),
+  },
+  handler: async (ctx, args) => {
+    await authenticateAndAuthorize(ctx, args.foundationId, [
+      "admin",
+      "super_admin", 
+      "reviewer",
+    ]);
+
+    // Count pending documents
+    const pendingDocuments = await ctx.db
+      .query("documents")
+      .withIndex("by_foundation", (q) => q.eq("foundationId", args.foundationId))
+      .filter((q) => q.eq(q.field("status"), "pending_review"))
+      .collect();
+
+    // Count applications under review
+    const pendingApplications = await ctx.db
+      .query("applications")
+      .withIndex("by_foundation", (q) => q.eq("foundationId", args.foundationId))
+      .filter((q) => q.eq(q.field("status"), "under_review"))
+      .collect();
+
+    // Count pending financial records
+    const pendingFinancial = await ctx.db
+      .query("financialRecords")
+      .withIndex("by_foundation", (q) => q.eq("foundationId", args.foundationId))
+      .filter((q) => 
+        q.or(
+          q.eq(q.field("status"), "pending"),
+          q.eq(q.field("status"), "approved")
+        )
+      )
+      .collect();
+
+    return {
+      documents: pendingDocuments.length,
+      applications: pendingApplications.length,
+      financial: pendingFinancial.length,
+      total: pendingDocuments.length + pendingApplications.length + pendingFinancial.length,
+    };
+  },
+});
+
 // Create new application
 export const createApplication = mutation({
   args: {

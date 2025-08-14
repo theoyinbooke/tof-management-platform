@@ -60,6 +60,34 @@ export const storeFile = mutation({
 });
 
 /**
+ * Upload payment receipt
+ */
+export const uploadPaymentReceipt = mutation({
+  args: {
+    foundationId: v.id("foundations"),
+    financialRecordId: v.id("financialRecords"),
+    fileName: v.string(),
+    fileType: v.string(),
+    fileSize: v.number(),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      throw new Error("Not authenticated");
+    }
+
+    // Generate upload URL for the receipt
+    const uploadUrl = await ctx.storage.generateUploadUrl();
+    
+    // This would be the storage ID after upload is complete
+    // In a real implementation, this would be returned from the upload process
+    const storageId = await ctx.storage.generateUploadUrl(); // Placeholder
+
+    return storageId;
+  },
+});
+
+/**
  * Get files for an application
  */
 export const getApplicationFiles = query({

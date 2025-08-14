@@ -467,3 +467,62 @@ export const getByRoles = query({
     return filteredUsers;
   },
 });
+
+/**
+ * Toggle user active status (admin only)
+ */
+export const toggleActiveStatus = mutation({
+  args: {
+    userId: v.id("users"),
+  },
+  handler: async (ctx, args) => {
+    // Get target user first
+    const targetUser = await ctx.db.get(args.userId);
+    if (!targetUser) {
+      throw new Error("User not found");
+    }
+
+    // Authenticate and authorize
+    const currentUser = await authenticateAndAuthorize(
+      ctx,
+      targetUser.foundationId ?? null,
+      ["admin", "super_admin"]
+    );
+    
+    // Cannot deactivate yourself
+    if (currentUser._id === args.userId) {
+      throw new Error("Cannot deactivate your own account");
+    }
+    
+    // Cannot deactivate super admins unless you are one
+    if (targetUser.role === "super_admin" && currentUser.role !== "super_admin") {
+      throw new Error("Only super admins can deactivate other super admins");
+    }
+    
+    const newStatus = !targetUser.isActive;
+    
+    // Update user
+    await ctx.db.patch(args.userId, {
+      isActive: newStatus,
+      updatedAt: Date.now(),
+    });
+    
+    // Create audit log (only if target user has a foundation)
+    if (targetUser.foundationId) {
+      await ctx.db.insert("auditLogs", {
+        foundationId: targetUser.foundationId,
+        userId: currentUser._id,
+        userEmail: currentUser.email,
+        userRole: currentUser.role,
+        action: newStatus ? "user_reactivated" : "user_deactivated",
+        entityType: "users",
+        entityId: args.userId,
+        description: `${newStatus ? "Reactivated" : "Deactivated"} user account for ${targetUser.firstName} ${targetUser.lastName}`,
+        riskLevel: "high",
+        createdAt: Date.now(),
+      });
+    }
+    
+    return { success: true, newStatus };
+  },
+});

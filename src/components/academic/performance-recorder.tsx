@@ -199,7 +199,7 @@ export function PerformanceRecorder({ foundationId }: PerformanceRecorderProps) 
         
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
           <DialogTrigger asChild>
-            <Button className="bg-emerald-600 hover:bg-emerald-700">
+            <Button className="bg-emerald-600 hover:bg-emerald-700 text-white">
               <Plus className="h-4 w-4 mr-2" />
               Record Performance
             </Button>
@@ -604,7 +604,7 @@ export function PerformanceRecorder({ foundationId }: PerformanceRecorderProps) 
                   
                   <Button
                     type="submit"
-                    className="bg-emerald-600 hover:bg-emerald-700"
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white"
                   >
                     <Award className="h-4 w-4 mr-2" />
                     Save Performance Record
@@ -713,7 +713,7 @@ export function PerformanceRecorder({ foundationId }: PerformanceRecorderProps) 
               </p>
               <Button 
                 onClick={() => setIsOpen(true)}
-                className="bg-emerald-600 hover:bg-emerald-700"
+                className="bg-emerald-600 hover:bg-emerald-700 text-white"
               >
                 <Plus className="h-4 w-4 mr-2" />
                 Record Performance

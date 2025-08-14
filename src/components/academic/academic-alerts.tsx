@@ -612,7 +612,7 @@ export function AcademicAlerts({ foundationId }: AcademicAlertsProps) {
             </Button>
             <Button
               onClick={() => handleAlertAction(selectedAlert, "resolve")}
-              className="bg-emerald-600 hover:bg-emerald-700"
+              className="bg-emerald-600 hover:bg-emerald-700 text-white"
             >
               <CheckCircle className="h-4 w-4 mr-2" />
               Resolve

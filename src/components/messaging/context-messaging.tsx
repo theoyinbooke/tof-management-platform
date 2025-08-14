@@ -210,7 +210,7 @@ export function ContextMessaging({
             currentUserId={currentUserId}
             triggerText="Send Custom Message"
             triggerVariant="default"
-            className="w-full bg-emerald-600 hover:bg-emerald-700"
+            className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
           />
         </div>
       </CardContent>

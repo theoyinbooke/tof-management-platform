@@ -290,3 +290,25 @@ export const createUser = mutation({
     return { success: true, userId };
   },
 });
+
+/**
+ * Get audit logs for a specific user (admin only)
+ */
+export const getUserAuditLogs = query({
+  args: {
+    userId: v.id("users"),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    // Authenticate as admin
+    const currentUser = await authenticateAndAuthorize(ctx, null, ["super_admin", "admin"]);
+    
+    const logs = await ctx.db
+      .query("auditLogs")
+      .filter((q) => q.eq(q.field("userId"), args.userId))
+      .order("desc")
+      .take(args.limit || 50);
+    
+    return logs;
+  },
+});

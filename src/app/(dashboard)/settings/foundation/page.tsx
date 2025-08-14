@@ -430,7 +430,7 @@ export default function FoundationSettingsPage() {
                 <Button
                   onClick={handleSetupFoundation}
                   disabled={loading}
-                  className="bg-emerald-600 hover:bg-emerald-700"
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white"
                 >
                   {loading ? (
                     <RefreshCw className="w-4 h-4 mr-2 animate-spin" />

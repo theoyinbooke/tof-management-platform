@@ -16,11 +16,12 @@ import {
   Bell,
   FileText,
   BarChart3,
-  UserPlus,
   Eye,
   AlertTriangle
 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
+import { InviteUserDialog } from "@/components/users/invite-user-dialog";
+import { toast } from "sonner";
 
 export default function AdminPage() {
   // Fetch admin data
@@ -29,6 +30,12 @@ export default function AdminPage() {
   const systemStats = useQuery(api.admin.getSystemStats);
   
   const [activeTab, setActiveTab] = useState("overview");
+
+  const handleInviteSent = () => {
+    // The useQuery will automatically refetch when the data changes
+    // due to the new invitation being created
+    toast.success("User list will refresh automatically");
+  };
 
   return (
     <ProtectedRoute allowedRoles={["super_admin", "admin"]}>
@@ -46,10 +53,7 @@ export default function AdminPage() {
               <FileText className="w-4 h-4 mr-2" />
               Export Logs
             </Button>
-            <Button>
-              <UserPlus className="w-4 h-4 mr-2" />
-              Add User
-            </Button>
+            <InviteUserDialog onInviteSent={handleInviteSent} />
           </div>
         </div>
 
@@ -206,10 +210,7 @@ export default function AdminPage() {
                       Manage user accounts and permissions ({users?.length || 0} users)
                     </CardDescription>
                   </div>
-                  <Button>
-                    <UserPlus className="w-4 h-4 mr-2" />
-                    Add New User
-                  </Button>
+                  <InviteUserDialog onInviteSent={handleInviteSent} />
                 </div>
               </CardHeader>
               <CardContent>

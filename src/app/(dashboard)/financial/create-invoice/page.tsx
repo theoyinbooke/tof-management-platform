@@ -116,7 +116,7 @@ export default function CreateInvoicePage() {
       const invoiceId = await createInvoice({
         foundationId,
         beneficiaryId: formData.beneficiaryId as Id<"beneficiaries">,
-        academicSessionId: formData.academicSessionId ? formData.academicSessionId as Id<"academicSessions"> : undefined,
+        academicSessionId: formData.academicSessionId && formData.academicSessionId !== "none" ? formData.academicSessionId as Id<"academicSessions"> : undefined,
         feeCategoryId: formData.feeCategoryId as Id<"feeCategories">,
         amount: parseFloat(formData.amount),
         currency: formData.currency,
@@ -207,7 +207,7 @@ export default function CreateInvoicePage() {
                         <SelectValue placeholder="Select academic session" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">None</SelectItem>
+                        <SelectItem value="none">None</SelectItem>
                         {academicSessions?.map((session) => (
                           <SelectItem key={session._id} value={session._id}>
                             {session.sessionName} - {session.academicLevel?.name}

@@ -9,6 +9,9 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { useCurrentUser } from "@/hooks/use-current-user";
 import { getInitials } from "@/lib/utils";
+import { useQuery } from "convex/react";
+import { api } from "../../../convex/_generated/api";
+import { Id } from "../../../convex/_generated/dataModel";
 import {
   Home,
   Users,
@@ -79,7 +82,6 @@ const navigationItems: NavItem[] = [
     href: "/reviews",
     icon: UserCheck,
     roles: ["reviewer", "admin", "super_admin"],
-    badge: "3",
   },
   {
     title: "Academic",
@@ -98,6 +100,12 @@ const navigationItems: NavItem[] = [
     href: "/programs",
     icon: Calendar,
     roles: ["super_admin", "admin", "beneficiary"],
+  },
+  {
+    title: "Documents",
+    href: "/documents",
+    icon: FileText,
+    roles: ["super_admin", "admin", "reviewer", "beneficiary", "guardian"],
   },
   {
     title: "Reports",
@@ -153,6 +161,17 @@ export function Sidebar() {
   const { user, isLoading } = useCurrentUser();
   const { signOut } = useClerk();
   const router = useRouter();
+
+  // Get foundation ID from user
+  const foundationId = user?.foundationId as Id<"foundations"> | undefined;
+
+  // Fetch review counts for badge
+  const reviewCounts = useQuery(
+    api.applications.getReviewCounts,
+    foundationId && (user?.role === "admin" || user?.role === "super_admin" || user?.role === "reviewer") 
+      ? { foundationId } 
+      : "skip"
+  );
 
   const handleSignOut = async () => {
     await signOut();
@@ -230,6 +249,16 @@ export function Sidebar() {
         {filteredNavItems.map((item) => {
           const Icon = item.icon;
           const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
+          
+          // Get dynamic badge for Reviews
+          const getBadgeText = () => {
+            if (item.href === "/reviews" && reviewCounts?.total && reviewCounts.total > 0) {
+              return reviewCounts.total.toString();
+            }
+            return item.badge;
+          };
+
+          const badgeText = getBadgeText();
 
           return (
             <Link
@@ -248,14 +277,14 @@ export function Sidebar() {
               {!collapsed && (
                 <>
                   <span className="flex-1 text-sm font-medium">{item.title}</span>
-                  {item.badge && (
+                  {badgeText && (
                     <Badge className="bg-primary text-white h-5 px-1.5">
-                      {item.badge}
+                      {badgeText}
                     </Badge>
                   )}
                 </>
               )}
-              {collapsed && item.badge && (
+              {collapsed && badgeText && (
                 <div className="absolute -top-1 -right-1 h-2 w-2 bg-primary rounded-full" />
               )}
             </Link>

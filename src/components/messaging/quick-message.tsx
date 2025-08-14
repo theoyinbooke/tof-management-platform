@@ -179,7 +179,7 @@ export function QuickMessage({
           <Button
             onClick={handleSendMessage}
             disabled={!selectedRecipient || !message.trim() || isLoading || message.length > 500}
-            className="bg-emerald-600 hover:bg-emerald-700"
+            className="bg-emerald-600 hover:bg-emerald-700 text-white"
           >
             <Send className="h-4 w-4 mr-2" />
             {isLoading ? "Sending..." : "Send Message"}

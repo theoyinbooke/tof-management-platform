@@ -1080,3 +1080,185 @@ export const generateAcademicAlerts = mutation({
     return { alertsCreated };
   },
 });
+
+/**
+ * Get simple performance overview for academic dashboard
+ */
+export const getPerformanceOverview = query({
+  args: {
+    foundationId: v.id("foundations"),
+  },
+  handler: async (ctx, args) => {
+    await authenticateAndAuthorize(ctx, args.foundationId, [
+      "admin",
+      "super_admin",
+      "reviewer",
+    ]);
+
+    // Get all beneficiaries
+    const beneficiaries = await ctx.db
+      .query("beneficiaries")
+      .withIndex("by_foundation", (q) => q.eq("foundationId", args.foundationId))
+      .collect();
+
+    // Get all performance records
+    const performanceRecords = await ctx.db
+      .query("performanceRecords")
+      .withIndex("by_foundation", (q) => q.eq("foundationId", args.foundationId))
+      .collect();
+
+    const totalBeneficiaries = beneficiaries.length;
+    const recordsWithGrades = performanceRecords.filter(r => r.overallGrade !== undefined);
+    
+    const averagePerformance = recordsWithGrades.length > 0 
+      ? recordsWithGrades.reduce((sum, r) => sum + (r.overallGrade || 0), 0) / recordsWithGrades.length
+      : 0;
+
+    const performanceDistribution = {
+      excellent: recordsWithGrades.filter(r => (r.overallGrade || 0) >= 80).length,
+      good: recordsWithGrades.filter(r => (r.overallGrade || 0) >= 70 && (r.overallGrade || 0) < 80).length,
+      satisfactory: recordsWithGrades.filter(r => (r.overallGrade || 0) >= 60 && (r.overallGrade || 0) < 70).length,
+      needsImprovement: recordsWithGrades.filter(r => (r.overallGrade || 0) < 60).length,
+    };
+
+    return {
+      totalBeneficiaries,
+      averagePerformance,
+      performanceDistribution,
+    };
+  },
+});
+
+/**
+ * Get beneficiary progress for academic dashboard
+ */
+export const getBeneficiaryProgress = query({
+  args: {
+    foundationId: v.id("foundations"),
+    academicLevelId: v.optional(v.id("academicLevels")),
+    sessionId: v.optional(v.id("academicSessions")),
+  },
+  handler: async (ctx, args) => {
+    await authenticateAndAuthorize(ctx, args.foundationId, [
+      "admin",
+      "super_admin",
+      "reviewer",
+    ]);
+
+    // Get performance records with filters
+    let query = ctx.db
+      .query("performanceRecords")
+      .withIndex("by_foundation", (q) => q.eq("foundationId", args.foundationId));
+
+    const records = await query.collect();
+
+    // Filter records based on criteria
+    let filteredRecords = records;
+
+    if (args.sessionId) {
+      filteredRecords = records.filter(r => r.academicSessionId === args.sessionId);
+    }
+
+    // Enrich with related data
+    const progressData = await Promise.all(
+      filteredRecords.map(async (record) => {
+        const beneficiary = record.beneficiaryId 
+          ? await ctx.db.get(record.beneficiaryId)
+          : null;
+
+        const user = beneficiary?.userId 
+          ? await ctx.db.get(beneficiary.userId)
+          : null;
+
+        const session = record.academicSessionId 
+          ? await ctx.db.get(record.academicSessionId)
+          : null;
+
+        const academicLevel = session?.academicLevelId 
+          ? await ctx.db.get(session.academicLevelId)
+          : null;
+
+        // Filter by academic level if specified
+        if (args.academicLevelId && academicLevel?._id !== args.academicLevelId) {
+          return null;
+        }
+
+        return {
+          ...record,
+          beneficiary: beneficiary ? { ...beneficiary, user } : null,
+          academicLevel,
+          session,
+          averageScore: record.overallGrade || 0,
+          lastUpdated: record.updatedAt,
+        };
+      })
+    );
+
+    // Filter out null entries and sort
+    return progressData
+      .filter(item => item !== null)
+      .sort((a, b) => (b.lastUpdated || 0) - (a.lastUpdated || 0));
+  },
+});
+
+/**
+ * Get simple performance alerts for dashboard
+ */
+export const getPerformanceAlerts = query({
+  args: {
+    foundationId: v.id("foundations"),
+  },
+  handler: async (ctx, args) => {
+    await authenticateAndAuthorize(ctx, args.foundationId, [
+      "admin",
+      "super_admin",
+      "reviewer",
+    ]);
+
+    // Get recent performance records with low grades
+    const lowPerformanceRecords = await ctx.db
+      .query("performanceRecords")
+      .withIndex("by_foundation", (q) => q.eq("foundationId", args.foundationId))
+      .filter((q) => q.lt(q.field("overallGrade"), 60))
+      .collect();
+
+    // Generate alert-like objects
+    const alerts = await Promise.all(
+      lowPerformanceRecords.slice(0, 10).map(async (record) => {
+        const beneficiary = record.beneficiaryId 
+          ? await ctx.db.get(record.beneficiaryId)
+          : null;
+
+        const user = beneficiary?.userId 
+          ? await ctx.db.get(beneficiary.userId)
+          : null;
+
+        let reason = "Low academic performance";
+        let priority = "medium";
+
+        if ((record.overallGrade || 0) < 40) {
+          reason = "Critical: Very low academic performance";
+          priority = "high";
+        } else if ((record.overallGrade || 0) < 50) {
+          reason = "Warning: Poor academic performance";
+          priority = "high";
+        }
+
+        return {
+          beneficiaryId: record.beneficiaryId,
+          beneficiaryName: user ? `${user.firstName} ${user.lastName}` : "Unknown",
+          reason,
+          priority,
+          averageScore: record.overallGrade || 0,
+        };
+      })
+    );
+
+    return alerts.sort((a, b) => {
+      if (a.priority !== b.priority) {
+        return a.priority === "high" ? -1 : 1;
+      }
+      return a.averageScore - b.averageScore;
+    });
+  },
+});

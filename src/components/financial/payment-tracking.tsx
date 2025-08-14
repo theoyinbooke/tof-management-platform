@@ -72,6 +72,7 @@ export function PaymentTracking({ foundationId }: PaymentTrackingProps) {
   // Mutations
   const createInvoice = useMutation(api.financial.createInvoice);
   const updateStatus = useMutation(api.financial.updateStatus);
+  const markFinancialRecordPaid = useMutation(api.financial.markFinancialRecordPaid);
 
   // Format currency
   const formatCurrency = (amount: number, currency: "NGN" | "USD" = "NGN") => {
@@ -140,11 +141,23 @@ export function PaymentTracking({ foundationId }: PaymentTrackingProps) {
   // Handle payment status update
   const handleStatusUpdate = async (recordId: Id<"financialRecords">, status: string, data?: any) => {
     try {
-      await updateStatus({
-        recordId,
-        status: status as any,
-        ...data,
-      });
+      if (status === "paid") {
+        // Use the new markFinancialRecordPaid mutation for paid status
+        await markFinancialRecordPaid({
+          recordId,
+          paidDate: data?.paidDate || new Date().toISOString(),
+          receiptNumber: data?.receiptNumber,
+          paymentReference: data?.paymentReference,
+          notes: data?.notes,
+        });
+      } else {
+        // Use the existing updateStatus for other status changes
+        await updateStatus({
+          recordId,
+          status: status as any,
+          ...data,
+        });
+      }
       
       toast.success(`Payment status updated to ${status}`);
       setIsUpdateDialogOpen(false);
@@ -180,7 +193,7 @@ export function PaymentTracking({ foundationId }: PaymentTrackingProps) {
         
         <Button 
           onClick={() => setIsCreateDialogOpen(true)}
-          className="bg-emerald-600 hover:bg-emerald-700"
+          className="bg-emerald-600 hover:bg-emerald-700 text-white"
         >
           <Plus className="h-4 w-4 mr-2" />
           Create Invoice
@@ -397,7 +410,7 @@ export function PaymentTracking({ foundationId }: PaymentTrackingProps) {
               </p>
               <Button 
                 onClick={() => setIsCreateDialogOpen(true)}
-                className="bg-emerald-600 hover:bg-emerald-700"
+                className="bg-emerald-600 hover:bg-emerald-700 text-white"
               >
                 <Plus className="h-4 w-4 mr-2" />
                 Create Invoice

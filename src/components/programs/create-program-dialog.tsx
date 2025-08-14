@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { useForm } from "react-hook-form";
@@ -52,11 +52,38 @@ export function CreateProgramDialog({ foundationId, onSuccess, onCancel }: Creat
   const [objectives, setObjectives] = useState<string[]>([]);
   const [newRequirement, setNewRequirement] = useState("");
   const [newObjective, setNewObjective] = useState("");
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
 
   const createProgram = useMutation(api.programs.createProgram);
   
   // Get potential coordinators (users with admin or reviewer roles)
-  const coordinators = useQuery(api.admin.getAllUsers);
+  const coordinators = useQuery(api.users.getByRoles, {
+    foundationId,
+    roles: ["admin", "super_admin", "reviewer"],
+    isActive: true,
+  });
+
+  // Hide scrollbar with direct CSS manipulation
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (container) {
+      const style = document.createElement('style');
+      style.textContent = `
+        .program-dialog-scroll::-webkit-scrollbar {
+          display: none;
+        }
+        .program-dialog-scroll {
+          scrollbar-width: none;
+          -ms-overflow-style: none;
+        }
+      `;
+      document.head.appendChild(style);
+      
+      return () => {
+        document.head.removeChild(style);
+      };
+    }
+  }, []);
 
   const form = useForm<ProgramFormData>({
     resolver: zodResolver(programSchema),
@@ -122,13 +149,15 @@ export function CreateProgramDialog({ foundationId, onSuccess, onCancel }: Creat
     }
   };
 
-  const potentialCoordinators = coordinators?.filter(user => 
-    user.role === "admin" || user.role === "super_admin" || user.role === "reviewer"
-  );
+  const potentialCoordinators = coordinators;
 
   return (
-    <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+    <div 
+      ref={scrollContainerRef}
+      className="max-h-[80vh] overflow-y-auto pr-1 program-dialog-scroll"
+    >
+      <Form {...form}>
+        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
         {/* Basic Information */}
         <Card>
           <CardHeader>
@@ -549,5 +578,6 @@ export function CreateProgramDialog({ foundationId, onSuccess, onCancel }: Creat
         </div>
       </form>
     </Form>
+    </div>
   );
 }

@@ -242,7 +242,7 @@ export function BudgetManagement({ foundationId }: BudgetManagementProps) {
         
         <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
           <DialogTrigger asChild>
-            <Button className="bg-emerald-600 hover:bg-emerald-700">
+            <Button className="bg-emerald-600 hover:bg-emerald-700 text-white">
               <Plus className="h-4 w-4 mr-2" />
               Create Budget Plan
             </Button>
@@ -454,7 +454,7 @@ export function BudgetManagement({ foundationId }: BudgetManagementProps) {
                   
                   <Button
                     type="submit"
-                    className="bg-emerald-600 hover:bg-emerald-700"
+                    className="bg-emerald-600 hover:bg-emerald-700 text-white"
                   >
                     <Target className="h-4 w-4 mr-2" />
                     Create Budget Plan
@@ -632,7 +632,7 @@ export function BudgetManagement({ foundationId }: BudgetManagementProps) {
               </p>
               <Button 
                 onClick={() => setIsCreateDialogOpen(true)}
-                className="bg-emerald-600 hover:bg-emerald-700"
+                className="bg-emerald-600 hover:bg-emerald-700 text-white"
               >
                 <Plus className="h-4 w-4 mr-2" />
                 Create Budget Plan

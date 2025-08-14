@@ -226,7 +226,7 @@ export function MessagingWidget({ foundationId, currentUserId, className }: Mess
                       onClick={handleSendMessage}
                       disabled={!newMessage.trim()}
                       size="sm"
-                      className="bg-emerald-600 hover:bg-emerald-700"
+                      className="bg-emerald-600 hover:bg-emerald-700 text-white"
                     >
                       <Send className="h-3 w-3" />
                     </Button>
@@ -293,7 +293,7 @@ export function MessagingWidget({ foundationId, currentUserId, className }: Mess
                       <MessageSquare className="h-8 w-8 text-gray-300 mx-auto mb-2" />
                       <p className="text-sm text-gray-600 mb-3">No conversations yet</p>
                       <Link href="/messages">
-                        <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700">
+                        <Button size="sm" className="bg-emerald-600 hover:bg-emerald-700 text-white">
                           Start Chatting
                         </Button>
                       </Link>

@@ -181,7 +181,7 @@ export function InvoiceGenerator({ foundationId }: InvoiceGeneratorProps) {
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
-        <Button className="bg-emerald-600 hover:bg-emerald-700">
+        <Button className="bg-emerald-600 hover:bg-emerald-700 text-white">
           <FileText className="h-4 w-4 mr-2" />
           Generate Invoice
         </Button>
@@ -307,7 +307,7 @@ export function InvoiceGenerator({ foundationId }: InvoiceGeneratorProps) {
                 
                 <Button
                   onClick={form.handleSubmit(onSubmit)}
-                  className="bg-emerald-600 hover:bg-emerald-700"
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white"
                 >
                   <Send className="h-4 w-4 mr-2" />
                   Create Invoice
@@ -542,7 +542,7 @@ export function InvoiceGenerator({ foundationId }: InvoiceGeneratorProps) {
                 
                 <Button
                   type="submit"
-                  className="bg-emerald-600 hover:bg-emerald-700"
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white"
                 >
                   <Calculator className="h-4 w-4 mr-2" />
                   Create Invoice

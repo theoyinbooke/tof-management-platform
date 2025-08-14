@@ -4,11 +4,13 @@
   /* Design System Colors */
   --color-primary: #16a34a;
   --color-primary-hover: #15803d;
+  --color-primary-foreground: #ffffff;
   --color-primary-light: #bbf7d0;
   --color-primary-soft: #dcfce7;
   
   --color-secondary: #0ea5e9;
   --color-secondary-hover: #0284c7;
+  --color-secondary-foreground: #ffffff;
   --color-secondary-light: #bae6fd;
   --color-secondary-soft: #e0f2fe;
   
@@ -16,6 +18,35 @@
   --color-warning: #f59e0b;
   --color-error: #dc2626;
   --color-info: #3b82f6;
+  
+  /* Destructive Colors */
+  --color-destructive: #dc2626;
+  --color-destructive-foreground: #ffffff;
+  
+  /* Background Colors */
+  --color-background: #ffffff;
+  --color-foreground: #0f172a;
+  
+  /* Muted Colors */
+  --color-muted: #f1f5f9;
+  --color-muted-foreground: #64748b;
+  
+  /* Accent Colors */
+  --color-accent: #f1f5f9;
+  --color-accent-foreground: #0f172a;
+  
+  /* Border and Input */
+  --color-border: #e2e8f0;
+  --color-input: #e2e8f0;
+  --color-ring: #16a34a;
+  
+  /* Popover Colors */
+  --color-popover: #ffffff;
+  --color-popover-foreground: #0f172a;
+  
+  /* Card Colors */
+  --color-card: #ffffff;
+  --color-card-foreground: #0f172a;
   
   --bg-sidebar: #064e3b;
   --bg-gradient: linear-gradient(135deg, #fecaca 0%, #bfdbfe 50%, #bbf7d0 100%);

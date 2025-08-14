@@ -295,7 +295,7 @@ export function AttendanceRecorder({ foundationId }: AttendanceRecorderProps) {
                 </Button>
                 <Button
                   onClick={handleSaveAttendance}
-                  className="bg-emerald-600 hover:bg-emerald-700"
+                  className="bg-emerald-600 hover:bg-emerald-700 text-white"
                 >
                   <Save className="h-4 w-4 mr-2" />
                   Save Attendance
@@ -389,7 +389,7 @@ export function AttendanceRecorder({ foundationId }: AttendanceRecorderProps) {
                               size="sm"
                               onClick={() => handleAttendanceChange(record.enrollmentId, "present")}
                               className={cn(
-                                currentAttendanceStatus === "present" && "bg-emerald-600 hover:bg-emerald-700"
+                                currentAttendanceStatus === "present" && "bg-emerald-600 hover:bg-emerald-700 text-white"
                               )}
                             >
                               <UserCheck className="h-3 w-3" />

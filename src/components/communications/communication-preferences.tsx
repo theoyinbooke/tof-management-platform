@@ -158,7 +158,7 @@ export function CommunicationPreferences({ foundationId, userId }: Communication
           <Button 
             onClick={handleSavePreferences} 
             disabled={isSaving}
-            className="bg-emerald-600 hover:bg-emerald-700"
+            className="bg-emerald-600 hover:bg-emerald-700 text-white"
           >
             <Save className="h-4 w-4 mr-2" />
             {isSaving ? "Saving..." : "Save Changes"}
@@ -299,7 +299,7 @@ export function CommunicationPreferences({ foundationId, userId }: Communication
             onClick={handleSavePreferences} 
             disabled={isSaving}
             size="lg"
-            className="bg-emerald-600 hover:bg-emerald-700"
+            className="bg-emerald-600 hover:bg-emerald-700 text-white"
           >
             <Save className="h-4 w-4 mr-2" />
             {isSaving ? "Saving..." : "Save All Changes"}
