@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 import { InviteUserDialog } from "@/components/users/invite-user-dialog";
+import { IncompleteInvitations } from "@/components/admin/incomplete-invitations";
 import { toast } from "sonner";
 
 export default function AdminPage() {
@@ -131,6 +132,9 @@ export default function AdminPage() {
           </TabsList>
 
           <TabsContent value="overview" className="space-y-6">
+            {/* Incomplete Invitations Alert */}
+            <IncompleteInvitations />
+            
             {/* Recent Activity */}
             <Card>
               <CardHeader>

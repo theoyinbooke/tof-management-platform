@@ -726,6 +726,83 @@ export const resendInvitation = mutation({
 });
 
 /**
+ * Get all users with incomplete invitations (have invitation token but no Clerk account)
+ */
+export const getIncompleteInvitations = query({
+  args: {
+    foundationId: v.id("foundations"),
+  },
+  handler: async (ctx, args) => {
+    const currentUser = await authenticateAndAuthorize(ctx, args.foundationId, ["admin", "super_admin"]);
+
+    // Find users who have invitation tokens but no Clerk ID (incomplete registrations)
+    const incompleteUsers = await ctx.db
+      .query("users")
+      .withIndex("by_foundation", (q) => q.eq("foundationId", args.foundationId))
+      .filter((q) => 
+        q.and(
+          q.eq(q.field("isActive"), false),
+          q.eq(q.field("clerkId"), ""),
+          q.neq(q.field("invitationToken"), undefined)
+        )
+      )
+      .collect();
+
+    return incompleteUsers.map(user => ({
+      _id: user._id,
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      role: user.role,
+      invitationSentAt: user.createdAt,
+      invitationExpiresAt: user.invitationExpiresAt,
+      invitationToken: user.invitationToken,
+    }));
+  },
+});
+
+/**
+ * Check if an email has a pending invitation (for sign-in error handling)
+ */
+export const checkPendingInvitation = query({
+  args: {
+    email: v.string(),
+  },
+  handler: async (ctx, args) => {
+    // Find user with this email who has an incomplete invitation
+    const pendingUser = await ctx.db
+      .query("users")
+      .withIndex("by_email", (q) => q.eq("email", args.email.toLowerCase()))
+      .filter((q) => 
+        q.and(
+          q.eq(q.field("isActive"), false),
+          q.eq(q.field("clerkId"), ""),
+          q.neq(q.field("invitationToken"), undefined)
+        )
+      )
+      .unique();
+
+    if (!pendingUser) {
+      return null;
+    }
+
+    // Check if invitation has expired
+    const isExpired = pendingUser.invitationExpiresAt && pendingUser.invitationExpiresAt < Date.now();
+
+    return {
+      hasPendingInvitation: true,
+      isExpired,
+      firstName: pendingUser.firstName,
+      lastName: pendingUser.lastName,
+      role: pendingUser.role,
+      foundationName: pendingUser.foundationId ? 
+        (await ctx.db.get(pendingUser.foundationId))?.name : null,
+      // Don't return the actual token for security
+    };
+  },
+});
+
+/**
  * Validate invitation token and get user details
  */
 export const validateInvitationToken = query({
