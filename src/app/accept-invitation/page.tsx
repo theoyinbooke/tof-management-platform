@@ -88,14 +88,38 @@ function AcceptInvitationContent() {
         throw new Error("Sign up not initialized");
       }
 
-      const signUpResult = await signUp.create({
-        emailAddress: invitationData.user.email,
-        password: password,
-      });
-
-      if (!signUpResult?.createdUserId) {
-        throw new Error("Failed to create user account");
+      console.log("Creating sign up with email:", invitationData.user.email);
+      
+      let signUpResult;
+      try {
+        signUpResult = await signUp.create({
+          emailAddress: invitationData.user.email,
+          password: password,
+        });
+      } catch (clerkError) {
+        console.error("Clerk sign up error:", clerkError);
+        throw new Error(`Failed to create account with Clerk: ${clerkError.message || clerkError}`);
       }
+
+      console.log("SignUp result:", signUpResult);
+      console.log("SignUp result keys:", Object.keys(signUpResult || {}));
+      console.log("SignUp result status:", signUpResult?.status);
+      console.log("SignUp result id:", signUpResult?.id);
+      console.log("SignUp result createdUserId:", signUpResult?.createdUserId);
+
+      if (!signUpResult) {
+        throw new Error("Sign up result is null or undefined");
+      }
+
+      // Check for user ID in different possible properties
+      const userId = signUpResult.createdUserId || signUpResult.id || signUpResult.user?.id;
+      
+      if (!userId) {
+        console.error("No user ID found in signUpResult:", signUpResult);
+        throw new Error(`Failed to get user ID from sign up result. Status: ${signUpResult.status}`);
+      }
+
+      console.log("Using userId:", userId);
 
       // Update user profile with first and last name
       if (signUpResult.status === "complete" || signUpResult.status === "missing_requirements") {
@@ -113,12 +137,15 @@ function AcceptInvitationContent() {
       // Accept the invitation in our system first
       await acceptInvitation({
         token,
-        clerkId: signUpResult.createdUserId,
+        clerkId: userId,
       });
 
       // Then attempt to complete sign-in
       if (signUpResult.status === "complete" && setActive) {
-        await setActive({ session: signUpResult.createdSessionId });
+        const sessionId = signUpResult.createdSessionId || signUpResult.sessions?.[0]?.id;
+        if (sessionId) {
+          await setActive({ session: sessionId });
+        }
         
         toast.success("Welcome! Your account has been activated successfully.");
         router.push("/dashboard");
