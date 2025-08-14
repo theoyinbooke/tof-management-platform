@@ -91,12 +91,23 @@ function AcceptInvitationContent() {
       const signUpResult = await signUp.create({
         emailAddress: invitationData.user.email,
         password: password,
-        firstName: invitationData.user.firstName,
-        lastName: invitationData.user.lastName,
       });
 
       if (!signUpResult?.createdUserId) {
         throw new Error("Failed to create user account");
+      }
+
+      // Update user profile with first and last name
+      if (signUpResult.status === "complete" || signUpResult.status === "missing_requirements") {
+        try {
+          await signUp.update({
+            firstName: invitationData.user.firstName,
+            lastName: invitationData.user.lastName,
+          });
+        } catch (profileError) {
+          console.warn("Could not update profile:", profileError);
+          // Continue with the flow even if profile update fails
+        }
       }
 
       // Accept the invitation in our system first
