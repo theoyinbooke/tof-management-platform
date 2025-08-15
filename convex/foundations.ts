@@ -471,9 +471,9 @@ export const getPerformanceMetrics = query({
       ? Math.round((beneficiaries.filter(b => b.status === "active").length / beneficiaries.length) * 100)
       : 0;
     
-    // Academic performance average (using academicPerformance table)
+    // Academic performance average (using performanceRecords table)
     const performanceRecords = await ctx.db
-      .query("academicPerformance")
+      .query("performanceRecords")
       .withIndex("by_foundation", (q) => q.eq("foundationId", args.foundationId))
       .collect();
     

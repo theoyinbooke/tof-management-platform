@@ -1,7 +1,7 @@
 export default {
   providers: [
     {
-      domain: "awaited-shark-74.clerk.accounts.dev",
+      domain: process.env.CLERK_ISSUER_URL || "https://awaited-shark-74.accounts.dev",
       applicationID: "convex",
     },
   ]

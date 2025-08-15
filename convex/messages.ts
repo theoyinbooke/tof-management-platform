@@ -48,7 +48,7 @@ export const getConversations = query({
           .filter((q) => 
             q.and(
               q.neq(q.field("senderId"), user._id),
-              q.not(q.field("readBy").includes(user._id))
+              q.eq(q.field("isRead"), false)
             )
           )
           .collect();
@@ -205,14 +205,18 @@ export const sendMessage = mutation({
     for (const participantId of otherParticipants) {
       await ctx.db.insert("notifications", {
         foundationId: conversation.foundationId,
-        userId: participantId,
+        recipientType: "specific_users",
+        recipients: [participantId],
         title: "New Message",
         message: `${user.firstName} ${user.lastName}: ${args.content.substring(0, 100)}${args.content.length > 100 ? '...' : ''}`,
-        type: "message",
+        notificationType: "alert",
+        channels: ["in_app"],
+        isScheduled: false,
+        isSent: true,
+        sentAt: Date.now(),
         priority: "normal",
-        entityType: "conversation",
-        entityId: args.conversationId,
-        isRead: false,
+        requiresAction: false,
+        createdBy: user._id,
         createdAt: Date.now(),
         updatedAt: Date.now(),
       });
@@ -429,7 +433,7 @@ export const getUnreadCount = query({
         .filter((q) => 
           q.and(
             q.neq(q.field("senderId"), user._id),
-            q.not(q.field("readBy").includes(user._id))
+            q.eq(q.field("isRead"), false)
           )
         )
         .collect();

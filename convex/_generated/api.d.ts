@@ -30,6 +30,7 @@ import type * as files from "../files.js";
 import type * as financial from "../financial.js";
 import type * as foundations from "../foundations.js";
 import type * as http from "../http.js";
+import type * as messages from "../messages.js";
 import type * as messaging from "../messaging.js";
 import type * as notifications from "../notifications.js";
 import type * as programTypes from "../programTypes.js";
@@ -65,6 +66,7 @@ declare const fullApi: ApiFromModules<{
   financial: typeof financial;
   foundations: typeof foundations;
   http: typeof http;
+  messages: typeof messages;
   messaging: typeof messaging;
   notifications: typeof notifications;
   programTypes: typeof programTypes;
