@@ -1,7 +1,7 @@
 export default {
   providers: [
     {
-      domain: "awaited-shark-74.clerk.accounts.dev",
+      domain: process.env.CLERK_DOMAIN!,
       applicationID: "convex",
     },
   ]
