@@ -47,7 +47,7 @@ const InviteUserSchema = z.object({
   firstName: z.string().min(2, "First name must be at least 2 characters"),
   lastName: z.string().min(2, "Last name must be at least 2 characters"),
   role: z.enum(["admin", "reviewer", "beneficiary", "guardian"], {
-    required_error: "Please select a role",
+    errorMap: () => ({ message: "Please select a role" }),
   }),
   message: z.string().optional(),
 });

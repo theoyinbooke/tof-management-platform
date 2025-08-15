@@ -67,7 +67,7 @@ const navigationItems: NavItem[] = [
   },
   {
     title: "Apply Now",
-    href: "/beneficiary/apply",
+    href: "/apply-new",
     icon: Plus,
     roles: ["beneficiary"],
   },

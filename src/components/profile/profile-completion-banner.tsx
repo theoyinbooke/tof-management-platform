@@ -9,6 +9,7 @@ import { Progress } from "@/components/ui/progress";
 import { AlertCircle, User, CheckCircle, X } from "lucide-react";
 import { useState } from "react";
 import { Id } from "../../../convex/_generated/dataModel";
+import { getProfileCompletionSteps } from "@/lib/profile-utils";
 
 interface ProfileCompletionBannerProps {
   onSetupProfile: () => void;

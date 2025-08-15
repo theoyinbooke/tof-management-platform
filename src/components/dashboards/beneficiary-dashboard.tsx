@@ -22,6 +22,7 @@ import {
   ArrowRight,
   AlertCircle,
 } from "lucide-react";
+import { formatAcademicLevel } from "@/lib/profile-utils";
 
 export function BeneficiaryDashboard() {
   const { user } = useCurrentUser();
@@ -64,7 +65,7 @@ export function BeneficiaryDashboard() {
             <p className="text-sm text-white/70">Current Level</p>
             <p className="text-lg font-semibold">
               {user?.profile?.beneficiaryInfo?.currentLevel 
-                ? user.profile.beneficiaryInfo.currentLevel.replace('-', ' ').toUpperCase()
+                ? formatAcademicLevel(user.profile.beneficiaryInfo.currentLevel)
                 : "Not Set"
               }
             </p>
