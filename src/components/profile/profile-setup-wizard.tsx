@@ -61,6 +61,39 @@ const ACADEMIC_LEVELS = [
   { value: "university-year-5", label: "University Year 5" },
 ];
 
+// Type definitions inferred from Zod schemas
+type Address = z.infer<typeof AddressSchema>;
+type BeneficiaryInfo = z.infer<typeof BeneficiaryInfoSchema>;
+type GuardianInfo = z.infer<typeof GuardianInfoSchema>;
+
+// Address schema with explicit types
+const AddressSchema = z.object({
+  street: z.string().min(5, "Please enter your full street address"),
+  city: z.string().min(2, "City is required"),
+  state: z.string().min(1, "Please select your state"),
+  country: z.string().min(1, "Country is required"),
+  postalCode: z.string().optional(),
+});
+
+// Beneficiary info schema
+const BeneficiaryInfoSchema = z.object({
+  currentLevel: z.string().min(1, "Please select your current academic level"),
+  currentSchool: z.string().min(2, "Current school name is required"),
+  hasRepeatedClass: z.boolean(),
+  specialNeeds: z.string().optional(),
+  emergencyContact: z.object({
+    name: z.string().min(2, "Emergency contact name is required"),
+    relationship: z.string().min(1, "Please specify relationship"),
+    phone: z.string().regex(/^(\+234|0)[789][01]\d{8}$/, "Please enter a valid Nigerian phone number"),
+  }),
+});
+
+// Guardian info schema
+const GuardianInfoSchema = z.object({
+  occupation: z.string().optional(),
+  relationship: z.string().optional(),
+});
+
 // Profile setup schema
 const ProfileSetupSchema = z.object({
   // Basic Information
@@ -70,35 +103,17 @@ const ProfileSetupSchema = z.object({
   phone: z.string().regex(/^(\+234|0)[789][01]\d{8}$/, "Please enter a valid Nigerian phone number"),
   
   // Address Information
-  address: z.object({
-    street: z.string().min(5, "Please enter your full street address"),
-    city: z.string().min(2, "City is required"),
-    state: z.string().min(1, "Please select your state"),
-    country: z.string().optional().default("Nigeria"),
-    postalCode: z.string().optional(),
-  }),
+  address: AddressSchema,
   
   // Beneficiary-specific fields (conditional)
-  beneficiaryInfo: z.object({
-    currentLevel: z.string().min(1, "Please select your current academic level"),
-    currentSchool: z.string().min(2, "Current school name is required"),
-    hasRepeatedClass: z.boolean().default(false),
-    specialNeeds: z.string().optional(),
-    emergencyContact: z.object({
-      name: z.string().min(2, "Emergency contact name is required"),
-      relationship: z.string().min(1, "Please specify relationship"),
-      phone: z.string().regex(/^(\+234|0)[789][01]\d{8}$/, "Please enter a valid Nigerian phone number"),
-    }),
-  }).optional(),
+  beneficiaryInfo: BeneficiaryInfoSchema.optional(),
   
   // Guardian-specific fields (conditional)
-  guardianInfo: z.object({
-    occupation: z.string().optional(),
-    relationship: z.string().optional(),
-  }).optional(),
+  guardianInfo: GuardianInfoSchema.optional(),
 });
 
-type ProfileSetupData = z.infer<typeof ProfileSetupSchema>;
+// Profile setup data type
+export type ProfileSetupData = z.infer<typeof ProfileSetupSchema>;
 
 interface ProfileSetupWizardProps {
   userId: Id<"users">;

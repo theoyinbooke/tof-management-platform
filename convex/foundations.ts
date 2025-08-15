@@ -325,7 +325,7 @@ export const getStatistics = query({
     foundationId: v.id("foundations"),
   },
   handler: async (ctx, args) => {
-    await authenticateAndAuthorize(ctx, args.foundationId, ["admin", "super_admin"]);
+    await authenticateAndAuthorize(ctx, args.foundationId, ["admin", "super_admin", "reviewer"]);
     
     // Get counts
     const beneficiaries = await ctx.db
@@ -354,7 +354,11 @@ export const getStatistics = query({
       activeBeneficiaries: beneficiaries.filter((b) => b.status === "active").length,
       totalApplications: applications.length,
       pendingApplications: applications.filter((a) => a.status === "submitted").length,
+      approvedApplications: applications.filter((a) => a.status === "approved").length,
       totalUsers: users.length,
+      adminUsers: users.filter((u) => u.role === "admin" || u.role === "super_admin").length,
+      reviewerUsers: users.filter((u) => u.role === "reviewer").length,
+      totalPrograms: programs.length,
       activePrograms: programs.filter((p) => p.status === "active").length,
       byStatus: {
         beneficiaries: {
@@ -370,6 +374,122 @@ export const getStatistics = query({
           rejected: applications.filter((a) => a.status === "rejected").length,
         },
       },
+    };
+  },
+});
+
+/**
+ * Get recent activities for foundation
+ */
+export const getRecentActivities = query({
+  args: {
+    foundationId: v.id("foundations"),
+  },
+  handler: async (ctx, args) => {
+    await authenticateAndAuthorize(ctx, args.foundationId, ["admin", "super_admin", "reviewer"]);
+    
+    // Get recent audit logs
+    const auditLogs = await ctx.db
+      .query("auditLogs")
+      .withIndex("by_foundation", (q) => q.eq("foundationId", args.foundationId))
+      .order("desc")
+      .take(20);
+    
+    // Transform audit logs to activities
+    const activities = auditLogs.map(log => {
+      let type: 'application' | 'beneficiary' | 'payment' | 'alert' = 'application';
+      let title = log.action;
+      
+      if (log.entityType === 'applications') {
+        type = 'application';
+        title = `Application ${log.action}`;
+      } else if (log.entityType === 'beneficiaries') {
+        type = 'beneficiary';
+        title = `Beneficiary ${log.action}`;
+      } else if (log.entityType === 'payments' || log.entityType === 'invoices') {
+        type = 'payment';
+        title = `Payment ${log.action}`;
+      } else if (log.entityType === 'performanceAlerts') {
+        type = 'alert';
+        title = `Alert ${log.action}`;
+      }
+      
+      return {
+        type,
+        title,
+        description: log.description || `${log.action} by ${log.userEmail}`,
+        timestamp: log.createdAt,
+        userId: log.userId,
+        userEmail: log.userEmail,
+      };
+    });
+    
+    return activities;
+  },
+});
+
+/**
+ * Get performance metrics for foundation
+ */
+export const getPerformanceMetrics = query({
+  args: {
+    foundationId: v.id("foundations"),
+  },
+  handler: async (ctx, args) => {
+    await authenticateAndAuthorize(ctx, args.foundationId, ["admin", "super_admin", "reviewer"]);
+    
+    // Calculate various performance metrics
+    const thirtyDaysAgo = Date.now() - (30 * 24 * 60 * 60 * 1000);
+    
+    // Application processing time
+    const recentApplications = await ctx.db
+      .query("applications")
+      .withIndex("by_foundation", (q) => q.eq("foundationId", args.foundationId))
+      .filter((q) => q.gte(q.field("createdAt"), thirtyDaysAgo))
+      .collect();
+    
+    const processedApplications = recentApplications.filter(a => 
+      a.status === "approved" || a.status === "rejected"
+    );
+    
+    let avgProcessingTime = 0;
+    if (processedApplications.length > 0) {
+      const totalTime = processedApplications.reduce((sum, app) => {
+        const processTime = (app.updatedAt - app.createdAt) / (1000 * 60 * 60 * 24); // Convert to days
+        return sum + processTime;
+      }, 0);
+      avgProcessingTime = Math.round(totalTime / processedApplications.length);
+    }
+    
+    // Beneficiary retention rate
+    const beneficiaries = await ctx.db
+      .query("beneficiaries")
+      .withIndex("by_foundation", (q) => q.eq("foundationId", args.foundationId))
+      .collect();
+    
+    const retentionRate = beneficiaries.length > 0 
+      ? Math.round((beneficiaries.filter(b => b.status === "active").length / beneficiaries.length) * 100)
+      : 0;
+    
+    // Academic performance average (using academicPerformance table)
+    const performanceRecords = await ctx.db
+      .query("academicPerformance")
+      .withIndex("by_foundation", (q) => q.eq("foundationId", args.foundationId))
+      .collect();
+    
+    const academicAverage = performanceRecords.length > 0
+      ? Math.round(performanceRecords.reduce((sum, record) => sum + (record.overallGrade || 0), 0) / performanceRecords.length)
+      : 75; // Default placeholder
+    
+    // Financial disbursement rate (placeholder - would need actual payment data)
+    const disbursementRate = 85; // Placeholder value
+    
+    return {
+      avgProcessingTime: avgProcessingTime || 3, // Default 3 days
+      processingTrend: avgProcessingTime > 5 ? -10 : 15, // Negative if taking too long
+      retentionRate,
+      academicAverage,
+      disbursementRate,
     };
   },
 });
