@@ -472,7 +472,7 @@ export const getStatistics = query({
   handler: async (ctx, args) => {
     // Authenticate user
     await authenticateAndAuthorize(ctx, args.foundationId, [
-      "admin", "super_admin", "reviewer"
+      "admin", "super_admin", "reviewer", "beneficiary", "guardian"
     ]);
 
     const programs = await ctx.db

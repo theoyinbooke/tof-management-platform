@@ -203,11 +203,11 @@ export const checkProfileCompletion = query({
 export const completeProfileSetup = mutation({
   args: {
     userId: v.id("users"),
+    phone: v.string(),
     profile: v.object({
       middleName: v.optional(v.string()),
       dateOfBirth: v.string(),
       gender: v.union(v.literal("male"), v.literal("female"), v.literal("other")),
-      phone: v.string(),
       address: v.object({
         street: v.string(),
         city: v.string(),
@@ -256,7 +256,7 @@ export const completeProfileSetup = mutation({
 
     // Update user profile
     await ctx.db.patch(args.userId, {
-      phone: args.profile.phone,
+      phone: args.phone,
       profile: args.profile,
       profileCompleted: true,
       profileCompletedAt: Date.now(),

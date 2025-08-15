@@ -66,7 +66,7 @@ const ProfileSetupSchema = z.object({
   // Basic Information
   middleName: z.string().optional(),
   dateOfBirth: z.string().min(1, "Date of birth is required"),
-  gender: z.enum(["male", "female", "other"], { required_error: "Please select gender" }),
+  gender: z.enum(["male", "female", "other"], { message: "Please select gender" }),
   phone: z.string().regex(/^(\+234|0)[789][01]\d{8}$/, "Please enter a valid Nigerian phone number"),
   
   // Address Information
@@ -74,7 +74,7 @@ const ProfileSetupSchema = z.object({
     street: z.string().min(5, "Please enter your full street address"),
     city: z.string().min(2, "City is required"),
     state: z.string().min(1, "Please select your state"),
-    country: z.string().default("Nigeria"),
+    country: z.string().optional().default("Nigeria"),
     postalCode: z.string().optional(),
   }),
   
@@ -122,6 +122,7 @@ export function ProfileSetupWizard({ userId, userRole, userName, onComplete }: P
 
   const form = useForm<ProfileSetupData>({
     resolver: zodResolver(ProfileSetupSchema),
+    mode: "onChange",
     defaultValues: {
       middleName: "",
       dateOfBirth: "",
@@ -189,9 +190,11 @@ export function ProfileSetupWizard({ userId, userRole, userName, onComplete }: P
   const onSubmit = async (data: ProfileSetupData) => {
     setIsSubmitting(true);
     try {
+      const { phone, ...profileData } = data;
       await completeProfileSetup({
         userId,
-        profile: data,
+        phone: phone,
+        profile: profileData,
       });
       
       toast.success("Profile setup completed successfully!");
@@ -302,7 +305,7 @@ export function ProfileSetupWizard({ userId, userRole, userName, onComplete }: P
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>Gender *</FormLabel>
-                          <Select onValueChange={field.onChange} defaultValue={field.value}>
+                          <Select onValueChange={field.onChange} value={field.value}>
                             <FormControl>
                               <SelectTrigger>
                                 <SelectValue placeholder="Select gender" />
@@ -376,7 +379,7 @@ export function ProfileSetupWizard({ userId, userRole, userName, onComplete }: P
                         render={({ field }) => (
                           <FormItem>
                             <FormLabel>State *</FormLabel>
-                            <Select onValueChange={field.onChange} defaultValue={field.value}>
+                            <Select onValueChange={field.onChange} value={field.value}>
                               <FormControl>
                                 <SelectTrigger>
                                   <SelectValue placeholder="Select state" />
@@ -423,7 +426,7 @@ export function ProfileSetupWizard({ userId, userRole, userName, onComplete }: P
                       render={({ field }) => (
                         <FormItem>
                           <FormLabel>Current Academic Level *</FormLabel>
-                          <Select onValueChange={field.onChange} defaultValue={field.value}>
+                          <Select onValueChange={field.onChange} value={field.value}>
                             <FormControl>
                               <SelectTrigger>
                                 <SelectValue placeholder="Select your current academic level" />

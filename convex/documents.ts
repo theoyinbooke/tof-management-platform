@@ -552,7 +552,9 @@ export const getStatistics = query({
     foundationId: v.id("foundations"),
   },
   handler: async (ctx, args) => {
-    await authenticateAndAuthorize(ctx, args.foundationId, ["admin", "super_admin"]);
+    await authenticateAndAuthorize(ctx, args.foundationId, [
+      "admin", "super_admin", "reviewer", "beneficiary", "guardian"
+    ]);
 
     const documents = await ctx.db
       .query("documents")

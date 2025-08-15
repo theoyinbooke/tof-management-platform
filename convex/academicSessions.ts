@@ -443,3 +443,47 @@ export const getSessionsNeedingPerformance = query({
     return sessionsNeedingUpdate;
   },
 });
+
+// Get all academic sessions for a foundation
+export const getByFoundation = query({
+  args: {
+    foundationId: v.id("foundations"),
+    status: v.optional(v.union(
+      v.literal("planned"),
+      v.literal("active"),
+      v.literal("completed"),
+      v.literal("cancelled")
+    )),
+  },
+  handler: async (ctx, args) => {
+    await authenticateAndAuthorize(ctx, args.foundationId, ["admin", "super_admin", "reviewer"]);
+    
+    let query = ctx.db
+      .query("academicSessions")
+      .withIndex("by_foundation", (q) => q.eq("foundationId", args.foundationId));
+    
+    if (args.status) {
+      query = query.filter((q) => q.eq(q.field("status"), args.status));
+    }
+    
+    const sessions = await query.order("desc").collect();
+    
+    // Get beneficiary and academic level details
+    const sessionsWithDetails = await Promise.all(
+      sessions.map(async (session) => {
+        const beneficiary = await ctx.db.get(session.beneficiaryId);
+        const beneficiaryUser = beneficiary ? await ctx.db.get(beneficiary.userId) : null;
+        const academicLevel = await ctx.db.get(session.academicLevelId);
+        
+        return {
+          ...session,
+          beneficiary,
+          beneficiaryUser,
+          academicLevel,
+        };
+      })
+    );
+    
+    return sessionsWithDetails;
+  },
+});
