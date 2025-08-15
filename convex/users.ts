@@ -1,7 +1,8 @@
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { mutation, query, action, internalQuery, internalMutation } from "./_generated/server";
 import { authenticateAndAuthorize } from "./auth";
 import { internal } from "./_generated/api";
+import { createClerkClient } from "@clerk/backend";
 
 /**
  * Get all users for a foundation (admin only)
@@ -98,6 +99,191 @@ export const getById = query({
 });
 
 /**
+ * Check if user profile is complete based on role
+ */
+export const checkProfileCompletion = query({
+  args: {
+    userId: v.id("users"),
+  },
+  handler: async (ctx, args) => {
+    const user = await ctx.db.get(args.userId);
+    if (!user) {
+      return null;
+    }
+
+    // Required fields for all users
+    const basicFieldsComplete = !!(
+      user.firstName &&
+      user.lastName &&
+      user.email &&
+      user.phone
+    );
+
+    // Role-specific requirements
+    let roleSpecificComplete = true;
+    const requiredFields: string[] = [];
+    const missingFields: string[] = [];
+
+    if (user.role === "beneficiary") {
+      const profileExists = user.profile?.dateOfBirth && 
+                          user.profile?.gender && 
+                          user.profile?.address?.street &&
+                          user.profile?.address?.city &&
+                          user.profile?.address?.state &&
+                          user.profile?.beneficiaryInfo?.currentLevel &&
+                          user.profile?.beneficiaryInfo?.currentSchool;
+
+      requiredFields.push(
+        "Date of Birth",
+        "Gender", 
+        "Address",
+        "Current Academic Level",
+        "Current School"
+      );
+
+      if (!profileExists) {
+        roleSpecificComplete = false;
+        if (!user.profile?.dateOfBirth) missingFields.push("Date of Birth");
+        if (!user.profile?.gender) missingFields.push("Gender");
+        if (!user.profile?.address?.street) missingFields.push("Street Address");
+        if (!user.profile?.address?.city) missingFields.push("City");
+        if (!user.profile?.address?.state) missingFields.push("State");
+        if (!user.profile?.beneficiaryInfo?.currentLevel) missingFields.push("Current Academic Level");
+        if (!user.profile?.beneficiaryInfo?.currentSchool) missingFields.push("Current School");
+      }
+    }
+
+    if (user.role === "guardian") {
+      const profileExists = user.profile?.dateOfBirth && 
+                          user.profile?.gender && 
+                          user.profile?.address?.street &&
+                          user.profile?.address?.city &&
+                          user.profile?.address?.state;
+
+      requiredFields.push(
+        "Date of Birth",
+        "Gender", 
+        "Address"
+      );
+
+      if (!profileExists) {
+        roleSpecificComplete = false;
+        if (!user.profile?.dateOfBirth) missingFields.push("Date of Birth");
+        if (!user.profile?.gender) missingFields.push("Gender");
+        if (!user.profile?.address?.street) missingFields.push("Street Address");
+        if (!user.profile?.address?.city) missingFields.push("City");
+        if (!user.profile?.address?.state) missingFields.push("State");
+      }
+    }
+
+    // Add basic missing fields
+    if (!user.firstName) missingFields.push("First Name");
+    if (!user.lastName) missingFields.push("Last Name");
+    if (!user.email) missingFields.push("Email");
+    if (!user.phone) missingFields.push("Phone Number");
+
+    const isComplete = basicFieldsComplete && roleSpecificComplete;
+
+    return {
+      isComplete,
+      basicFieldsComplete,
+      roleSpecificComplete,
+      requiredFields,
+      missingFields,
+      completionPercentage: Math.round(
+        ((requiredFields.length - missingFields.length) / requiredFields.length) * 100
+      ),
+    };
+  },
+});
+
+/**
+ * Complete profile setup for new users
+ */
+export const completeProfileSetup = mutation({
+  args: {
+    userId: v.id("users"),
+    profile: v.object({
+      middleName: v.optional(v.string()),
+      dateOfBirth: v.string(),
+      gender: v.union(v.literal("male"), v.literal("female"), v.literal("other")),
+      phone: v.string(),
+      address: v.object({
+        street: v.string(),
+        city: v.string(),
+        state: v.string(),
+        country: v.string(),
+        postalCode: v.optional(v.string()),
+      }),
+      beneficiaryInfo: v.optional(v.object({
+        currentLevel: v.string(),
+        currentSchool: v.string(),
+        hasRepeatedClass: v.optional(v.boolean()),
+        specialNeeds: v.optional(v.string()),
+        emergencyContact: v.optional(v.object({
+          name: v.string(),
+          relationship: v.string(),
+          phone: v.string(),
+        })),
+      })),
+      guardianInfo: v.optional(v.object({
+        occupation: v.optional(v.string()),
+        relationship: v.optional(v.string()),
+      })),
+    }),
+  },
+  handler: async (ctx, args) => {
+    const user = await ctx.db.get(args.userId);
+    if (!user) {
+      throw new Error("User not found");
+    }
+
+    // Authenticate current user
+    const currentUser = await authenticateAndAuthorize(
+      ctx,
+      user.foundationId ?? null,
+      ["super_admin", "admin", "reviewer", "beneficiary", "guardian"]
+    );
+
+    // Users can update their own profile or admins can update any user
+    if (
+      currentUser._id !== args.userId &&
+      currentUser.role !== "admin" &&
+      currentUser.role !== "super_admin"
+    ) {
+      throw new Error("Access denied");
+    }
+
+    // Update user profile
+    await ctx.db.patch(args.userId, {
+      phone: args.profile.phone,
+      profile: args.profile,
+      profileCompleted: true,
+      profileCompletedAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+
+    // Create audit log if user has a foundation
+    if (user.foundationId) {
+      await ctx.db.insert("auditLogs", {
+        foundationId: user.foundationId,
+        userId: currentUser._id,
+        userEmail: currentUser.email,
+        userRole: currentUser.role,
+        action: "profile_completed",
+        entityType: "users",
+        entityId: args.userId,
+        description: `Completed profile setup for ${user.firstName} ${user.lastName}`,
+        riskLevel: "low",
+        createdAt: Date.now(),
+      });
+    }
+
+    return { success: true };
+  },
+});
+
+/**
  * Update user profile
  */
 export const updateProfile = mutation({
@@ -106,19 +292,35 @@ export const updateProfile = mutation({
     firstName: v.optional(v.string()),
     lastName: v.optional(v.string()),
     phone: v.optional(v.string()),
-    dateOfBirth: v.optional(v.number()),
-    gender: v.optional(v.union(v.literal("male"), v.literal("female"), v.literal("other"))),
-    address: v.optional(
-      v.object({
+    profile: v.optional(v.object({
+      middleName: v.optional(v.string()),
+      dateOfBirth: v.optional(v.string()),
+      gender: v.optional(v.union(v.literal("male"), v.literal("female"), v.literal("other"))),
+      profileImageUrl: v.optional(v.string()),
+      bio: v.optional(v.string()),
+      address: v.optional(v.object({
         street: v.string(),
         city: v.string(),
         state: v.string(),
         country: v.string(),
         postalCode: v.optional(v.string()),
-      })
-    ),
-    profileImageUrl: v.optional(v.string()),
-    bio: v.optional(v.string()),
+      })),
+      beneficiaryInfo: v.optional(v.object({
+        currentLevel: v.optional(v.string()),
+        currentSchool: v.optional(v.string()),
+        hasRepeatedClass: v.optional(v.boolean()),
+        specialNeeds: v.optional(v.string()),
+        emergencyContact: v.optional(v.object({
+          name: v.string(),
+          relationship: v.string(),
+          phone: v.string(),
+        })),
+      })),
+      guardianInfo: v.optional(v.object({
+        occupation: v.optional(v.string()),
+        relationship: v.optional(v.string()),
+      })),
+    })),
   },
   handler: async (ctx, args) => {
     const targetUser = await ctx.db.get(args.userId);
@@ -366,7 +568,7 @@ export const getStatistics = query({
 /**
  * Create user invitation using Clerk's invitation system
  */
-export const createInvitation = mutation({
+export const createInvitation = action({
   args: {
     foundationId: v.id("foundations"),
     email: v.string(),
@@ -381,14 +583,25 @@ export const createInvitation = mutation({
     invitedBy: v.id("users"),
     message: v.optional(v.string()),
   },
-  handler: async (ctx, args) => {
-    const currentUser = await authenticateAndAuthorize(ctx, args.foundationId, ["admin", "super_admin"]);
+  handler: async (ctx, args): Promise<{ 
+    success: boolean; 
+    clerkInvitationId: string;
+    pendingInvitationId: string;
+  }> => {
+    // Use runQuery and runMutation for database operations in actions
+    const currentUser: any = await ctx.runQuery(internal.auth.getCurrentUserWithAuth, {
+      foundationId: args.foundationId,
+      requiredRoles: ["admin", "super_admin"]
+    });
+    
+    if (!currentUser) {
+      throw new Error("Unauthorized: Admin access required");
+    }
     
     // Check if user already exists in any foundation (global check)
-    const existingUser = await ctx.db
-      .query("users")
-      .withIndex("by_email", (q) => q.eq("email", args.email))
-      .first();
+    const existingUser = await ctx.runQuery(internal.users.getUserByEmail, {
+      email: args.email
+    });
     
     console.log(`Creating invitation for ${args.email}: existing user found =`, existingUser ? {
       id: existingUser._id,
@@ -408,24 +621,17 @@ export const createInvitation = mutation({
     }
     
     // Get foundation details for the invitation
-    const foundation = await ctx.db.get(args.foundationId);
+    const foundation = await ctx.runQuery(internal.users.getFoundationById, {
+      foundationId: args.foundationId
+    });
     if (!foundation) {
       throw new Error("Foundation not found");
-    }
-    
-    // Get inviter details
-    const inviter = await ctx.db.get(args.invitedBy);
-    if (!inviter) {
-      throw new Error("Inviter not found");
     }
     
     // Create invitation using Clerk's Backend API
     console.log(`Creating Clerk invitation for ${args.email}...`);
     
     try {
-      // Import Clerk client dynamically to avoid issues
-      const { createClerkClient } = await import('@clerk/backend');
-      
       const clerkClient = createClerkClient({
         secretKey: process.env.CLERK_SECRET_KEY!,
         publishableKey: process.env.CLERK_PUBLISHABLE_KEY!,
@@ -448,7 +654,7 @@ export const createInvitation = mutation({
       console.log(`Clerk invitation created with ID: ${invitation.id}`);
       
       // Store pending invitation record for tracking
-      const pendingInvitationId = await ctx.db.insert("pendingInvitations", {
+      const result: any = await ctx.runMutation(internal.users.storePendingInvitation, {
         clerkInvitationId: invitation.id,
         foundationId: args.foundationId,
         email: args.email,
@@ -456,23 +662,11 @@ export const createInvitation = mutation({
         lastName: args.lastName,
         role: args.role,
         invitedBy: args.invitedBy,
-        status: "pending",
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-      });
-      
-      // Create audit log
-      await ctx.db.insert("auditLogs", {
-        foundationId: args.foundationId,
-        userId: currentUser._id,
-        userEmail: currentUser.email,
-        userRole: currentUser.role,
-        action: "user_invited",
-        entityType: "pendingInvitations",
-        entityId: pendingInvitationId,
-        description: `Invited ${args.firstName} ${args.lastName} (${args.email}) as ${args.role} via Clerk`,
-        riskLevel: args.role === "admin" ? "high" : "low",
-        createdAt: Date.now(),
+        inviterInfo: {
+          id: currentUser._id,
+          email: currentUser.email,
+          role: currentUser.role
+        }
       });
       
       console.log(`Invitation created successfully for ${args.email} (role: ${args.role})`);
@@ -480,7 +674,7 @@ export const createInvitation = mutation({
       return { 
         success: true, 
         clerkInvitationId: invitation.id,
-        pendingInvitationId 
+        pendingInvitationId: result.pendingInvitationId
       };
     } catch (error) {
       console.error(`Failed to create Clerk invitation for ${args.email}:`, error);
@@ -493,16 +687,25 @@ export const createInvitation = mutation({
 /**
  * Revoke user invitation using Clerk's system
  */
-export const revokeInvitation = mutation({
+export const revokeInvitation = action({
   args: {
     foundationId: v.id("foundations"),
     pendingInvitationId: v.id("pendingInvitations"),
   },
-  handler: async (ctx, args) => {
-    const currentUser = await authenticateAndAuthorize(ctx, args.foundationId, ["admin", "super_admin"]);
+  handler: async (ctx, args): Promise<{ success: boolean }> => {
+    const currentUser: any = await ctx.runQuery(internal.auth.getCurrentUserWithAuth, {
+      foundationId: args.foundationId,
+      requiredRoles: ["admin", "super_admin"]
+    });
+    
+    if (!currentUser) {
+      throw new Error("Unauthorized: Admin access required");
+    }
     
     // Get the pending invitation record
-    const pendingInvitation = await ctx.db.get(args.pendingInvitationId);
+    const pendingInvitation = await ctx.runQuery(internal.users.getPendingInvitationById, {
+      pendingInvitationId: args.pendingInvitationId
+    });
     if (!pendingInvitation) {
       throw new Error("Pending invitation not found");
     }
@@ -519,8 +722,6 @@ export const revokeInvitation = mutation({
     
     try {
       // Revoke the invitation in Clerk
-      const { createClerkClient } = await import('@clerk/backend');
-      
       const clerkClient = createClerkClient({
         secretKey: process.env.CLERK_SECRET_KEY!,
         publishableKey: process.env.CLERK_PUBLISHABLE_KEY!,
@@ -537,27 +738,21 @@ export const revokeInvitation = mutation({
       // Continue anyway - update our local record
     }
     
-    // Update the pending invitation status
-    await ctx.db.patch(args.pendingInvitationId, {
+    // Update the pending invitation status and create audit log
+    await ctx.runMutation(internal.users.updatePendingInvitationStatus, {
+      pendingInvitationId: args.pendingInvitationId,
       status: "revoked",
-      updatedAt: Date.now(),
+      auditInfo: {
+        foundationId: args.foundationId,
+        userId: currentUser._id,
+        userEmail: currentUser.email,
+        userRole: currentUser.role,
+        action: "invitation_revoked",
+        description: `Revoked invitation for ${pendingInvitation.firstName} ${pendingInvitation.lastName} (${pendingInvitation.email})`
+      }
     });
     
     console.log(`Invitation revoked for ${pendingInvitation.email}`);
-    
-    // Create audit log
-    await ctx.db.insert("auditLogs", {
-      foundationId: args.foundationId,
-      userId: currentUser._id,
-      userEmail: currentUser.email,
-      userRole: currentUser.role,
-      action: "invitation_revoked",
-      entityType: "pendingInvitations",
-      entityId: args.pendingInvitationId,
-      description: `Revoked invitation for ${pendingInvitation.firstName} ${pendingInvitation.lastName} (${pendingInvitation.email})`,
-      riskLevel: "medium",
-      createdAt: Date.now(),
-    });
     
     return { success: true };
   },
@@ -566,16 +761,25 @@ export const revokeInvitation = mutation({
 /**
  * Resend user invitation - create a new Clerk invitation
  */
-export const resendInvitation = mutation({
+export const resendInvitation = action({
   args: {
     foundationId: v.id("foundations"),
     pendingInvitationId: v.id("pendingInvitations"),
   },
-  handler: async (ctx, args) => {
-    const currentUser = await authenticateAndAuthorize(ctx, args.foundationId, ["admin", "super_admin"]);
+  handler: async (ctx, args): Promise<{ success: boolean }> => {
+    const currentUser: any = await ctx.runQuery(internal.auth.getCurrentUserWithAuth, {
+      foundationId: args.foundationId,
+      requiredRoles: ["admin", "super_admin"]
+    });
+    
+    if (!currentUser) {
+      throw new Error("Unauthorized: Admin access required");
+    }
     
     // Get the pending invitation record
-    const pendingInvitation = await ctx.db.get(args.pendingInvitationId);
+    const pendingInvitation = await ctx.runQuery(internal.users.getPendingInvitationById, {
+      pendingInvitationId: args.pendingInvitationId
+    });
     if (!pendingInvitation) {
       throw new Error("Pending invitation not found");
     }
@@ -591,15 +795,15 @@ export const resendInvitation = mutation({
     }
     
     // Get foundation details
-    const foundation = await ctx.db.get(args.foundationId);
+    const foundation = await ctx.runQuery(internal.users.getFoundationById, {
+      foundationId: args.foundationId
+    });
     if (!foundation) {
       throw new Error("Foundation not found");
     }
     
     try {
       // Create a new Clerk invitation (since you can't resend the same one)
-      const { createClerkClient } = await import('@clerk/backend');
-      
       const clerkClient = createClerkClient({
         secretKey: process.env.CLERK_SECRET_KEY!,
         publishableKey: process.env.CLERK_PUBLISHABLE_KEY!,
@@ -630,10 +834,18 @@ export const resendInvitation = mutation({
       
       console.log(`New Clerk invitation created with ID: ${newInvitation.id}`);
       
-      // Update the pending invitation with new Clerk ID
-      await ctx.db.patch(args.pendingInvitationId, {
+      // Update the pending invitation with new Clerk ID and create audit log
+      await ctx.runMutation(internal.users.updatePendingInvitationWithNewClerkId, {
+        pendingInvitationId: args.pendingInvitationId,
         clerkInvitationId: newInvitation.id,
-        updatedAt: Date.now(),
+        auditInfo: {
+          foundationId: args.foundationId,
+          userId: currentUser._id,
+          userEmail: currentUser.email,
+          userRole: currentUser.role,
+          action: "invitation_resent",
+          description: `Resent invitation to ${pendingInvitation.firstName} ${pendingInvitation.lastName} (${pendingInvitation.email})`
+        }
       });
       
       console.log(`Invitation resent to ${pendingInvitation.email}`);
@@ -644,16 +856,43 @@ export const resendInvitation = mutation({
       throw new Error(`Failed to resend invitation: ${errorMessage}`);
     }
     
+    return { success: true };
+  },
+});
+
+/**
+ * Internal: Update pending invitation with new Clerk ID
+ */
+export const updatePendingInvitationWithNewClerkId = internalMutation({
+  args: {
+    pendingInvitationId: v.id("pendingInvitations"),
+    clerkInvitationId: v.string(),
+    auditInfo: v.object({
+      foundationId: v.id("foundations"),
+      userId: v.id("users"),
+      userEmail: v.string(),
+      userRole: v.string(),
+      action: v.string(),
+      description: v.string(),
+    }),
+  },
+  handler: async (ctx, args) => {
+    // Update the pending invitation
+    await ctx.db.patch(args.pendingInvitationId, {
+      clerkInvitationId: args.clerkInvitationId,
+      updatedAt: Date.now(),
+    });
+    
     // Create audit log
     await ctx.db.insert("auditLogs", {
-      foundationId: args.foundationId,
-      userId: currentUser._id,
-      userEmail: currentUser.email,
-      userRole: currentUser.role,
-      action: "invitation_resent",
+      foundationId: args.auditInfo.foundationId,
+      userId: args.auditInfo.userId,
+      userEmail: args.auditInfo.userEmail,
+      userRole: args.auditInfo.userRole as any,
+      action: args.auditInfo.action,
       entityType: "pendingInvitations",
       entityId: args.pendingInvitationId,
-      description: `Resent invitation to ${pendingInvitation.firstName} ${pendingInvitation.lastName} (${pendingInvitation.email})`,
+      description: args.auditInfo.description,
       riskLevel: "low",
       createdAt: Date.now(),
     });
@@ -811,6 +1050,68 @@ export const getByRoles = query({
 });
 
 /**
+ * Check if user can submit applications (profile must be complete)
+ */
+export const canSubmitApplications = query({
+  args: {
+    userId: v.id("users"),
+  },
+  handler: async (ctx, args) => {
+    const user = await ctx.db.get(args.userId);
+    if (!user) {
+      return { canSubmit: false, reason: "User not found" };
+    }
+
+    // Only beneficiaries can submit applications
+    if (user.role !== "beneficiary") {
+      return { canSubmit: false, reason: "Only beneficiaries can submit applications" };
+    }
+
+    // Check if user is active
+    if (!user.isActive) {
+      return { canSubmit: false, reason: "User account is not active" };
+    }
+
+    // Check if profile is complete
+    if (!user.profileCompleted) {
+      return { 
+        canSubmit: false, 
+        reason: "Profile must be completed before submitting applications",
+        actionRequired: "complete_profile"
+      };
+    }
+
+    // Check required profile fields for beneficiaries
+    const requiredFieldsComplete = !!(
+      user.firstName &&
+      user.lastName &&
+      user.email &&
+      user.phone &&
+      user.profile?.dateOfBirth &&
+      user.profile?.gender &&
+      user.profile?.address?.street &&
+      user.profile?.address?.city &&
+      user.profile?.address?.state &&
+      user.profile?.beneficiaryInfo?.currentLevel &&
+      user.profile?.beneficiaryInfo?.currentSchool
+    );
+
+    if (!requiredFieldsComplete) {
+      return { 
+        canSubmit: false, 
+        reason: "Complete profile information is required",
+        actionRequired: "complete_profile"
+      };
+    }
+
+    return { 
+      canSubmit: true, 
+      reason: "All requirements met" 
+    };
+  },
+});
+
+/**
  * Toggle user active status (admin only)
  */
 export const toggleActiveStatus = mutation({
@@ -866,5 +1167,150 @@ export const toggleActiveStatus = mutation({
     }
     
     return { success: true, newStatus };
+  },
+});
+
+// ===================================
+// INTERNAL HELPER FUNCTIONS FOR ACTIONS
+// ===================================
+
+/**
+ * Internal: Get user by email
+ */
+export const getUserByEmail = internalQuery({
+  args: {
+    email: v.string(),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("users")
+      .withIndex("by_email", (q) => q.eq("email", args.email))
+      .first();
+  },
+});
+
+/**
+ * Internal: Get foundation by ID (for use in actions)
+ */
+export const getFoundationById = internalQuery({
+  args: {
+    foundationId: v.id("foundations"),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db.get(args.foundationId);
+  },
+});
+
+/**
+ * Internal: Store pending invitation
+ */
+export const storePendingInvitation = internalMutation({
+  args: {
+    clerkInvitationId: v.string(),
+    foundationId: v.id("foundations"),
+    email: v.string(),
+    firstName: v.string(),
+    lastName: v.string(),
+    role: v.union(
+      v.literal("admin"),
+      v.literal("reviewer"),
+      v.literal("beneficiary"),
+      v.literal("guardian")
+    ),
+    invitedBy: v.id("users"),
+    inviterInfo: v.object({
+      id: v.id("users"),
+      email: v.string(),
+      role: v.string(),
+    }),
+  },
+  handler: async (ctx, args) => {
+    // Store pending invitation record for tracking
+    const pendingInvitationId = await ctx.db.insert("pendingInvitations", {
+      clerkInvitationId: args.clerkInvitationId,
+      foundationId: args.foundationId,
+      email: args.email,
+      firstName: args.firstName,
+      lastName: args.lastName,
+      role: args.role,
+      invitedBy: args.invitedBy,
+      status: "pending",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+    
+    // Create audit log
+    await ctx.db.insert("auditLogs", {
+      foundationId: args.foundationId,
+      userId: args.inviterInfo.id,
+      userEmail: args.inviterInfo.email,
+      userRole: args.inviterInfo.role as any,
+      action: "user_invited",
+      entityType: "pendingInvitations",
+      entityId: pendingInvitationId,
+      description: `Invited ${args.firstName} ${args.lastName} (${args.email}) as ${args.role} via Clerk`,
+      riskLevel: args.role === "admin" ? "high" : "low",
+      createdAt: Date.now(),
+    });
+
+    return { pendingInvitationId };
+  },
+});
+
+/**
+ * Internal: Get pending invitation by ID
+ */
+export const getPendingInvitationById = internalQuery({
+  args: {
+    pendingInvitationId: v.id("pendingInvitations"),
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db.get(args.pendingInvitationId);
+  },
+});
+
+/**
+ * Internal: Update pending invitation status with audit log
+ */
+export const updatePendingInvitationStatus = internalMutation({
+  args: {
+    pendingInvitationId: v.id("pendingInvitations"),
+    status: v.union(
+      v.literal("pending"),
+      v.literal("accepted"),
+      v.literal("expired"),
+      v.literal("revoked")
+    ),
+    auditInfo: v.object({
+      foundationId: v.id("foundations"),
+      userId: v.id("users"),
+      userEmail: v.string(),
+      userRole: v.string(),
+      action: v.string(),
+      description: v.string(),
+    }),
+  },
+  handler: async (ctx, args) => {
+    // Update the pending invitation status
+    await ctx.db.patch(args.pendingInvitationId, {
+      status: args.status,
+      updatedAt: Date.now(),
+    });
+    
+    // Create audit log
+    await ctx.db.insert("auditLogs", {
+      foundationId: args.auditInfo.foundationId,
+      userId: args.auditInfo.userId,
+      userEmail: args.auditInfo.userEmail,
+      userRole: args.auditInfo.userRole as any,
+      action: args.auditInfo.action,
+      entityType: "pendingInvitations",
+      entityId: args.pendingInvitationId,
+      description: args.auditInfo.description,
+      riskLevel: "medium",
+      createdAt: Date.now(),
+    });
+    
+    return { success: true };
   },
 });

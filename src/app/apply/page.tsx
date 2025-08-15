@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
+import { useCurrentUser } from "@/hooks/use-current-user";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
@@ -21,7 +22,8 @@ import {
   Phone,
   Mail,
   AlertCircle,
-  Upload
+  Upload,
+  User
 } from "lucide-react";
 import { toast } from "sonner";
 import { useForm } from "react-hook-form";
@@ -125,27 +127,34 @@ export default function ApplicationPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submissionComplete, setSubmissionComplete] = useState(false);
   const [applicationNumber, setApplicationNumber] = useState<string>("");
+  const { user } = useCurrentUser();
 
   // Get the first active foundation (for demo purposes)
   const foundations = useQuery(api.foundations.getAll);
   const defaultFoundation = foundations?.[0];
+  
+  // Check if user can submit applications
+  const applicationEligibility = useQuery(
+    api.users.canSubmitApplications,
+    user ? { userId: user._id } : "skip"
+  );
 
   const form = useForm<ApplicationFormData>({
     resolver: zodResolver(ApplicationSchema),
     defaultValues: {
-      firstName: "",
-      lastName: "",
-      middleName: "",
-      dateOfBirth: "",
-      gender: undefined,
-      phone: "",
-      email: "",
+      firstName: user?.firstName || "",
+      lastName: user?.lastName || "",
+      middleName: user?.profile?.middleName || "",
+      dateOfBirth: user?.profile?.dateOfBirth || "",
+      gender: user?.profile?.gender || undefined,
+      phone: user?.phone || "",
+      email: user?.email || "",
       address: {
-        street: "",
-        city: "",
-        state: "",
-        country: "Nigeria",
-        postalCode: "",
+        street: user?.profile?.address?.street || "",
+        city: user?.profile?.address?.city || "",
+        state: user?.profile?.address?.state || "",
+        country: user?.profile?.address?.country || "Nigeria",
+        postalCode: user?.profile?.address?.postalCode || "",
       },
       guardian: {
         firstName: "",
@@ -156,10 +165,10 @@ export default function ApplicationPage() {
         occupation: "",
       },
       education: {
-        currentLevel: "",
-        currentSchool: "",
-        hasRepeatedClass: false,
-        specialNeeds: "",
+        currentLevel: user?.profile?.beneficiaryInfo?.currentLevel || "",
+        currentSchool: user?.profile?.beneficiaryInfo?.currentSchool || "",
+        hasRepeatedClass: user?.profile?.beneficiaryInfo?.hasRepeatedClass || false,
+        specialNeeds: user?.profile?.beneficiaryInfo?.specialNeeds || "",
       },
       financial: {
         familyIncome: undefined,
@@ -216,6 +225,12 @@ export default function ApplicationPage() {
   const onSubmit = async (data: ApplicationFormData) => {
     if (!defaultFoundation) {
       toast.error("No foundation available for applications");
+      return;
+    }
+
+    // Final check before submission
+    if (!applicationEligibility?.canSubmit) {
+      toast.error(applicationEligibility?.reason || "Cannot submit application");
       return;
     }
 
@@ -316,13 +331,68 @@ export default function ApplicationPage() {
     );
   }
 
-  if (!foundations) {
+  if (!foundations || !applicationEligibility) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600 mx-auto"></div>
           <p className="mt-4 text-gray-600">Loading application form...</p>
         </div>
+      </div>
+    );
+  }
+
+  // Block access if user cannot submit applications
+  if (!applicationEligibility.canSubmit) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+        <Card className="max-w-2xl w-full">
+          <CardHeader className="text-center">
+            <div className="w-16 h-16 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4">
+              <AlertCircle className="w-8 h-8" />
+            </div>
+            <CardTitle className="text-2xl text-red-800">Application Access Restricted</CardTitle>
+            <CardDescription className="text-lg">
+              {applicationEligibility.reason}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {applicationEligibility.actionRequired === "complete_profile" && (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                <div className="flex items-center gap-3">
+                  <User className="w-5 h-5 text-amber-600" />
+                  <div>
+                    <h4 className="font-semibold text-amber-800">Profile Setup Required</h4>
+                    <p className="text-sm text-amber-700 mt-1">
+                      Complete your profile setup to access the application system. Your profile information 
+                      will be automatically used to populate application forms.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+            
+            <div className="flex flex-col sm:flex-row gap-3">
+              <Button 
+                className="flex-1"
+                onClick={() => window.location.href = "/dashboard"}
+              >
+                <Building2 className="w-4 h-4 mr-2" />
+                Go to Dashboard
+              </Button>
+              {applicationEligibility.actionRequired === "complete_profile" && (
+                <Button 
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => window.location.href = "/apply-new"}
+                >
+                  <User className="w-4 h-4 mr-2" />
+                  Complete Profile
+                </Button>
+              )}
+            </div>
+          </CardContent>
+        </Card>
       </div>
     );
   }

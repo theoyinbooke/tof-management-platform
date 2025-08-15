@@ -45,6 +45,48 @@ export default defineSchema({
     isActive: v.boolean(),
     lastLogin: v.optional(v.number()),
     
+    // Profile completion tracking
+    profileCompleted: v.optional(v.boolean()),
+    profileCompletedAt: v.optional(v.number()),
+    
+    // Extended profile information
+    profile: v.optional(v.object({
+      middleName: v.optional(v.string()),
+      dateOfBirth: v.optional(v.string()),
+      gender: v.optional(v.union(v.literal("male"), v.literal("female"), v.literal("other"))),
+      profileImageUrl: v.optional(v.string()),
+      bio: v.optional(v.string()),
+      
+      // Address information
+      address: v.optional(v.object({
+        street: v.string(),
+        city: v.string(),
+        state: v.string(),
+        country: v.string(),
+        postalCode: v.optional(v.string()),
+      })),
+      
+      // Beneficiary-specific profile data
+      beneficiaryInfo: v.optional(v.object({
+        currentLevel: v.string(),
+        currentSchool: v.string(),
+        hasRepeatedClass: v.optional(v.boolean()),
+        specialNeeds: v.optional(v.string()),
+        emergencyContact: v.optional(v.object({
+          name: v.string(),
+          relationship: v.string(),
+          phone: v.string(),
+        })),
+      })),
+      
+      // Guardian-specific profile data  
+      guardianInfo: v.optional(v.object({
+        occupation: v.optional(v.string()),
+        relationship: v.optional(v.string()), // For guardians of beneficiaries
+        wardIds: v.optional(v.array(v.id("users"))), // IDs of beneficiaries under their care
+      })),
+    })),
+    
     // Communication preferences
     communicationPreferences: v.optional(v.object({
       emailNotifications: v.boolean(),

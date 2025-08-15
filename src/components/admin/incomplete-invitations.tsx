@@ -1,6 +1,6 @@
 "use client";
 
-import { useQuery, useMutation } from "convex/react";
+import { useQuery, useMutation, useAction } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { useCurrentUser } from "@/hooks/use-current-user";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -32,8 +32,8 @@ export function IncompleteInvitations() {
     api.users.getPendingInvitations,
     user?.foundationId ? { foundationId: user.foundationId } : "skip"
   );
-  const resendInvitation = useMutation(api.users.resendInvitation);
-  const revokeInvitation = useMutation(api.users.revokeInvitation);
+  const resendInvitation = useAction(api.users.resendInvitation);
+  const revokeInvitation = useAction(api.users.revokeInvitation);
 
   if (!user?.isAdmin) {
     return null;

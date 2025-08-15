@@ -1,9 +1,14 @@
 "use client";
 
+import { useState } from "react";
+import { useQuery } from "convex/react";
+import { api } from "../../../convex/_generated/api";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useCurrentUser } from "@/hooks/use-current-user";
+import { ProfileCompletionBanner } from "@/components/profile/profile-completion-banner";
+import { ProfileSetupWizard } from "@/components/profile/profile-setup-wizard";
 import {
   GraduationCap,
   Calendar,
@@ -15,33 +20,80 @@ import {
   Target,
   Clock,
   ArrowRight,
+  AlertCircle,
 } from "lucide-react";
 
 export function BeneficiaryDashboard() {
   const { user } = useCurrentUser();
+  const [showProfileSetup, setShowProfileSetup] = useState(false);
+  
+  // Real-time data queries
+  const profileCompletion = useQuery(
+    api.users.checkProfileCompletion,
+    user ? { userId: user._id } : "skip"
+  );
+
+  // If showing profile setup wizard
+  if (showProfileSetup && user) {
+    return (
+      <ProfileSetupWizard
+        userId={user._id}
+        userRole={user.role}
+        userName={`${user.firstName} ${user.lastName}`}
+        onComplete={() => setShowProfileSetup(false)}
+      />
+    );
+  }
 
   return (
     <div className="space-y-6">
+      {/* Profile Completion Banner */}
+      <ProfileCompletionBanner onSetupProfile={() => setShowProfileSetup(true)} />
+      
       {/* Welcome Section */}
-      <div className="bg-gradient-to-r from-primary to-primary-hover text-white p-6 rounded-xl">
+      <div className="bg-gradient-to-r from-emerald-600 to-emerald-700 text-white p-6 rounded-xl">
         <h1 className="text-2xl font-bold">Welcome back, {user?.firstName}!</h1>
         <p className="mt-2 text-white/90">
-          Keep up the great work! Your academic journey is progressing well.
+          {profileCompletion?.isComplete 
+            ? "Keep up the great work! Your academic journey is progressing well."
+            : "Complete your profile to unlock all features and start your application journey."
+          }
         </p>
         <div className="mt-4 flex gap-4">
           <div>
             <p className="text-sm text-white/70">Current Level</p>
-            <p className="text-lg font-semibold">SSS 2</p>
+            <p className="text-lg font-semibold">
+              {user?.profile?.beneficiaryInfo?.currentLevel 
+                ? user.profile.beneficiaryInfo.currentLevel.replace('-', ' ').toUpperCase()
+                : "Not Set"
+              }
+            </p>
           </div>
           <div>
-            <p className="text-sm text-white/70">Academic Performance</p>
-            <p className="text-lg font-semibold">85%</p>
+            <p className="text-sm text-white/70">Profile Status</p>
+            <p className="text-lg font-semibold">
+              {profileCompletion?.isComplete ? "Complete" : `${profileCompletion?.completionPercentage || 0}% Done`}
+            </p>
           </div>
           <div>
-            <p className="text-sm text-white/70">Next Payment</p>
-            <p className="text-lg font-semibold">Jan 15, 2025</p>
+            <p className="text-sm text-white/70">Current School</p>
+            <p className="text-lg font-semibold">
+              {user?.profile?.beneficiaryInfo?.currentSchool || "Not Set"}
+            </p>
           </div>
         </div>
+        
+        {!profileCompletion?.isComplete && (
+          <div className="mt-4">
+            <Button 
+              onClick={() => setShowProfileSetup(true)}
+              variant="secondary"
+              className="bg-white/20 hover:bg-white/30 text-white border-white/30"
+            >
+              Complete Profile Now
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Quick Stats */}

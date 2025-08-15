@@ -1,5 +1,5 @@
 import { v } from "convex/values";
-import { mutation, query, QueryCtx, MutationCtx } from "./_generated/server";
+import { mutation, query, internalQuery, QueryCtx, MutationCtx } from "./_generated/server";
 import { Doc, Id } from "./_generated/dataModel";
 
 // Helper type for user roles
@@ -371,6 +371,28 @@ export const hasPermission = query({
       return true;
     } catch {
       return false;
+    }
+  },
+});
+
+/**
+ * Internal: Get current user with authorization check (for use in actions)
+ */
+export const getCurrentUserWithAuth = internalQuery({
+  args: {
+    foundationId: v.optional(v.id("foundations")),
+    requiredRoles: v.array(v.string()),
+  },
+  handler: async (ctx, args) => {
+    try {
+      const user = await authenticateAndAuthorize(
+        ctx, 
+        args.foundationId || null, 
+        args.requiredRoles as UserRole[]
+      );
+      return user;
+    } catch (error) {
+      return null;
     }
   },
 });

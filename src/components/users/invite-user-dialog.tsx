@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useMutation } from "convex/react";
+import { useAction } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { useCurrentUser } from "@/hooks/use-current-user";
 import { Button } from "@/components/ui/button";
@@ -75,7 +75,7 @@ export function InviteUserDialog({ onInviteSent }: InviteUserDialogProps) {
   });
 
   // For now, we'll use a simple email invitation (in production, integrate with email service)
-  const sendInvitation = useMutation(api.users.createInvitation);
+  const sendInvitation = useAction(api.users.createInvitation);
 
   const roleDescriptions = {
     admin: "Full access to foundation settings, user management, and all features",

@@ -1,9 +1,14 @@
 "use client";
 
+import { useState } from "react";
+import { useQuery } from "convex/react";
+import { api } from "../../../convex/_generated/api";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useCurrentUser } from "@/hooks/use-current-user";
+import { ProfileCompletionBanner } from "@/components/profile/profile-completion-banner";
+import { ProfileSetupWizard } from "@/components/profile/profile-setup-wizard";
 import {
   GraduationCap,
   Calendar,
@@ -17,12 +22,52 @@ import {
 
 export function GuardianDashboard() {
   const { user } = useCurrentUser();
+  const [showProfileSetup, setShowProfileSetup] = useState(false);
+  
+  // Real-time data queries
+  const profileCompletion = useQuery(
+    api.users.checkProfileCompletion,
+    user ? { userId: user._id } : "skip"
+  );
+
+  // If showing profile setup wizard
+  if (showProfileSetup && user) {
+    return (
+      <ProfileSetupWizard
+        userId={user._id}
+        userRole={user.role}
+        userName={`${user.firstName} ${user.lastName}`}
+        onComplete={() => setShowProfileSetup(false)}
+      />
+    );
+  }
 
   return (
     <div className="space-y-6">
+      {/* Profile Completion Banner */}
+      <ProfileCompletionBanner onSetupProfile={() => setShowProfileSetup(true)} />
+      
       <div>
         <h1 className="text-2xl font-bold text-gray-900">Guardian Dashboard</h1>
-        <p className="text-gray-600 mt-1">Welcome, {user?.firstName}. Monitor your ward's academic progress.</p>
+        <p className="text-gray-600 mt-1">
+          Welcome, {user?.firstName}. 
+          {profileCompletion?.isComplete 
+            ? " Monitor your ward's academic progress and manage their educational journey."
+            : " Complete your profile to access all guardian features."
+          }
+        </p>
+        
+        {!profileCompletion?.isComplete && (
+          <div className="mt-3">
+            <Button 
+              onClick={() => setShowProfileSetup(true)}
+              variant="outline"
+              className="border-emerald-600 text-emerald-600 hover:bg-emerald-50"
+            >
+              Complete Profile Setup
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Ward Overview */}
