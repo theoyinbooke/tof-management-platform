@@ -42,16 +42,16 @@ export const getConversations = query({
         const lastMessage = messages[0];
         
         // Get unread count
-        const unreadMessages = await ctx.db
+        const allMessages = await ctx.db
           .query("messages")
           .withIndex("by_conversation", (q) => q.eq("conversationId", conv._id))
-          .filter((q) => 
-            q.and(
-              q.neq(q.field("senderId"), user._id),
-              q.not(q.field("readBy").includes(user._id))
-            )
-          )
           .collect();
+        
+        // Filter unread messages manually since readBy is an array of user IDs
+        const unreadMessages = allMessages.filter(msg => 
+          msg.senderId !== user._id && 
+          (!msg.readBy || !msg.readBy.includes(user._id))
+        );
 
         // Get participant details
         const participants = await Promise.all(
@@ -202,17 +202,21 @@ export const sendMessage = mutation({
 
     // Create notifications for other participants
     const otherParticipants = conversation.participantIds.filter(id => id !== user._id);
-    for (const participantId of otherParticipants) {
+    if (otherParticipants.length > 0) {
       await ctx.db.insert("notifications", {
         foundationId: conversation.foundationId,
-        userId: participantId,
+        recipientType: "specific_users",
+        recipients: otherParticipants,
         title: "New Message",
         message: `${user.firstName} ${user.lastName}: ${args.content.substring(0, 100)}${args.content.length > 100 ? '...' : ''}`,
-        type: "message",
+        notificationType: "alert",
         priority: "normal",
-        entityType: "conversation",
-        entityId: args.conversationId,
-        isRead: false,
+        channels: ["in_app"],
+        isScheduled: false,
+        isSent: true,
+        sentAt: Date.now(),
+        requiresAction: false,
+        createdBy: user._id,
         createdAt: Date.now(),
         updatedAt: Date.now(),
       });
@@ -246,11 +250,17 @@ export const markMessagesAsRead = mutation({
 
     // Update messages to mark as read by this user
     for (const message of messages) {
-      if (!message.readBy.includes(user._id)) {
-        const updatedReadBy = [...message.readBy, user._id];
+      // Check if user has already read this message
+      const hasRead = message.readBy && message.readBy.includes(user._id);
+      
+      if (!hasRead && message.senderId !== user._id) {
+        const updatedReadBy = [
+          ...(message.readBy || []),
+          user._id
+        ];
         await ctx.db.patch(message._id, {
           readBy: updatedReadBy,
-          isRead: updatedReadBy.length === message.deliveredTo.length,
+          isRead: message.deliveredTo ? updatedReadBy.length === message.deliveredTo.length : true,
           updatedAt: Date.now(),
         });
       }
@@ -423,16 +433,17 @@ export const getUnreadCount = query({
     // Count unread messages
     let unreadCount = 0;
     for (const conv of userConversations) {
-      const unread = await ctx.db
+      const messages = await ctx.db
         .query("messages")
         .withIndex("by_conversation", (q) => q.eq("conversationId", conv._id))
-        .filter((q) => 
-          q.and(
-            q.neq(q.field("senderId"), user._id),
-            q.not(q.field("readBy").includes(user._id))
-          )
-        )
         .collect();
+      
+      // Filter unread messages manually
+      const unread = messages.filter(msg => 
+        msg.senderId !== user._id && 
+        (!msg.readBy || !msg.readBy.includes(user._id))
+      );
+      
       unreadCount += unread.length;
     }
 
