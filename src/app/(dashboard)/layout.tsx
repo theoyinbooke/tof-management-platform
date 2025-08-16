@@ -1,6 +1,4 @@
-"use client";
-
-import { ProtectedRoute } from "@/components/auth/protected-route";
+import { DashboardLayoutClient } from "./layout-client";
 
 export default function DashboardLayout({
   children,
@@ -8,8 +6,8 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   return (
-    <ProtectedRoute>
+    <DashboardLayoutClient>
       {children}
-    </ProtectedRoute>
+    </DashboardLayoutClient>
   );
 }
