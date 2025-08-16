@@ -147,6 +147,12 @@ const adminItems: NavItem[] = [
     roles: ["super_admin", "admin"],
   },
   {
+    title: "Support Config",
+    href: "/support-config",
+    icon: DollarSign,
+    roles: ["super_admin", "admin"],
+  },
+  {
     title: "Configuration",
     href: "/configuration",
     icon: Settings,

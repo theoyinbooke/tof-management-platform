@@ -111,7 +111,16 @@ export const checkProfileCompletion = query({
       return null;
     }
 
-    // Required fields for all users
+    // Required fields for all users - add to requiredFields list
+    const requiredFields: string[] = ["First Name", "Last Name", "Email", "Phone Number"];
+    const missingFields: string[] = [];
+
+    // Check basic fields
+    if (!user.firstName) missingFields.push("First Name");
+    if (!user.lastName) missingFields.push("Last Name");
+    if (!user.email) missingFields.push("Email");
+    if (!user.phone) missingFields.push("Phone Number");
+
     const basicFieldsComplete = !!(
       user.firstName &&
       user.lastName &&
@@ -121,68 +130,72 @@ export const checkProfileCompletion = query({
 
     // Role-specific requirements
     let roleSpecificComplete = true;
-    const requiredFields: string[] = [];
-    const missingFields: string[] = [];
 
     if (user.role === "beneficiary") {
-      const profileExists = user.profile?.dateOfBirth && 
-                          user.profile?.gender && 
-                          user.profile?.address?.street &&
-                          user.profile?.address?.city &&
-                          user.profile?.address?.state &&
-                          user.profile?.beneficiaryInfo?.currentLevel &&
-                          user.profile?.beneficiaryInfo?.currentSchool;
-
+      // Add beneficiary-specific required fields
       requiredFields.push(
         "Date of Birth",
         "Gender", 
-        "Address",
+        "Street Address",
+        "City",
+        "State",
         "Current Academic Level",
         "Current School"
       );
 
-      if (!profileExists) {
-        roleSpecificComplete = false;
-        if (!user.profile?.dateOfBirth) missingFields.push("Date of Birth");
-        if (!user.profile?.gender) missingFields.push("Gender");
-        if (!user.profile?.address?.street) missingFields.push("Street Address");
-        if (!user.profile?.address?.city) missingFields.push("City");
-        if (!user.profile?.address?.state) missingFields.push("State");
-        if (!user.profile?.beneficiaryInfo?.currentLevel) missingFields.push("Current Academic Level");
-        if (!user.profile?.beneficiaryInfo?.currentSchool) missingFields.push("Current School");
-      }
+      // Check beneficiary-specific fields
+      if (!user.profile?.dateOfBirth) missingFields.push("Date of Birth");
+      if (!user.profile?.gender) missingFields.push("Gender");
+      if (!user.profile?.address?.street) missingFields.push("Street Address");
+      if (!user.profile?.address?.city) missingFields.push("City");
+      if (!user.profile?.address?.state) missingFields.push("State");
+      if (!user.profile?.beneficiaryInfo?.currentLevel) missingFields.push("Current Academic Level");
+      if (!user.profile?.beneficiaryInfo?.currentSchool) missingFields.push("Current School");
+
+      roleSpecificComplete = !!(
+        user.profile?.dateOfBirth && 
+        user.profile?.gender && 
+        user.profile?.address?.street &&
+        user.profile?.address?.city &&
+        user.profile?.address?.state &&
+        user.profile?.beneficiaryInfo?.currentLevel &&
+        user.profile?.beneficiaryInfo?.currentSchool
+      );
     }
 
     if (user.role === "guardian") {
-      const profileExists = user.profile?.dateOfBirth && 
-                          user.profile?.gender && 
-                          user.profile?.address?.street &&
-                          user.profile?.address?.city &&
-                          user.profile?.address?.state;
-
+      // Add guardian-specific required fields
       requiredFields.push(
         "Date of Birth",
         "Gender", 
-        "Address"
+        "Street Address",
+        "City",
+        "State"
       );
 
-      if (!profileExists) {
-        roleSpecificComplete = false;
-        if (!user.profile?.dateOfBirth) missingFields.push("Date of Birth");
-        if (!user.profile?.gender) missingFields.push("Gender");
-        if (!user.profile?.address?.street) missingFields.push("Street Address");
-        if (!user.profile?.address?.city) missingFields.push("City");
-        if (!user.profile?.address?.state) missingFields.push("State");
-      }
+      // Check guardian-specific fields
+      if (!user.profile?.dateOfBirth) missingFields.push("Date of Birth");
+      if (!user.profile?.gender) missingFields.push("Gender");
+      if (!user.profile?.address?.street) missingFields.push("Street Address");
+      if (!user.profile?.address?.city) missingFields.push("City");
+      if (!user.profile?.address?.state) missingFields.push("State");
+
+      roleSpecificComplete = !!(
+        user.profile?.dateOfBirth && 
+        user.profile?.gender && 
+        user.profile?.address?.street &&
+        user.profile?.address?.city &&
+        user.profile?.address?.state
+      );
     }
 
-    // Add basic missing fields
-    if (!user.firstName) missingFields.push("First Name");
-    if (!user.lastName) missingFields.push("Last Name");
-    if (!user.email) missingFields.push("Email");
-    if (!user.phone) missingFields.push("Phone Number");
-
     const isComplete = basicFieldsComplete && roleSpecificComplete;
+    
+    // Calculate percentage correctly
+    const completedFields = requiredFields.length - missingFields.length;
+    const completionPercentage = requiredFields.length > 0 
+      ? Math.max(0, Math.round((completedFields / requiredFields.length) * 100))
+      : 0;
 
     return {
       isComplete,
@@ -190,9 +203,7 @@ export const checkProfileCompletion = query({
       roleSpecificComplete,
       requiredFields,
       missingFields,
-      completionPercentage: Math.round(
-        ((requiredFields.length - missingFields.length) / requiredFields.length) * 100
-      ),
+      completionPercentage,
     };
   },
 });

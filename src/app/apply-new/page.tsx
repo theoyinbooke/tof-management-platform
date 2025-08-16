@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useQuery } from "convex/react";
+import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import { useCurrentUser } from "@/hooks/use-current-user";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,6 +10,8 @@ import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ProfileCompletionBanner } from "@/components/profile/profile-completion-banner";
 import { ProfileSetupWizard } from "@/components/profile/profile-setup-wizard";
+import { Skeleton } from "@/components/ui/skeleton";
+import { formatCurrency } from "@/lib/utils";
 import { 
   GraduationCap, 
   DollarSign, 
@@ -21,84 +23,65 @@ import {
   AlertCircle,
   CheckCircle,
   Lock,
-  ArrowRight
+  ArrowRight,
+  Loader2,
+  Calendar,
+  Info
 } from "lucide-react";
 import { toast } from "sonner";
+import * as Icons from "lucide-react";
 
-// Application types available
-const APPLICATION_TYPES = [
-  {
-    id: "school-fees",
-    title: "School Fees Support",
-    description: "Apply for tuition fee assistance for the current academic term",
-    icon: GraduationCap,
-    color: "emerald",
-    estimatedAmount: "₦50,000 - ₦200,000",
-    deadline: "Every Term",
-    requirements: ["Current report card", "School fee invoice", "Bank statement"],
-  },
-  {
-    id: "upkeep-allowance",
-    title: "Upkeep Allowance",
-    description: "Monthly allowance for books, transportation, and school supplies",
-    icon: DollarSign,
-    color: "blue",
-    estimatedAmount: "₦15,000 - ₦25,000/month",
-    deadline: "Monthly",
-    requirements: ["Expense budget", "Receipt of previous purchases", "Academic performance record"],
-  },
-  {
-    id: "books-materials",
-    title: "Books & Materials",
-    description: "Support for textbooks, uniforms, and essential learning materials",
-    icon: BookOpen,
-    color: "purple",
-    estimatedAmount: "₦20,000 - ₦40,000",
-    deadline: "Beginning of Term",
-    requirements: ["Book list from school", "Uniform requirements", "Store quotations"],
-  },
-  {
-    id: "exam-fees",
-    title: "Examination Fees",
-    description: "Support for WAEC, JAMB, Post-UTME and other examination fees",
-    icon: FileText,
-    color: "orange",
-    estimatedAmount: "₦10,000 - ₦30,000",
-    deadline: "Before Registration",
-    requirements: ["Exam registration form", "Academic transcript", "Payment receipt"],
-  },
-  {
-    id: "emergency-support",
-    title: "Emergency Support",
-    description: "Urgent financial assistance for unexpected educational expenses",
-    icon: AlertCircle,
-    color: "red",
-    estimatedAmount: "₦5,000 - ₦50,000",
-    deadline: "Anytime",
-    requirements: ["Emergency description", "Supporting documents", "Guardian endorsement"],
-  },
-  {
-    id: "transportation",
-    title: "Transportation Support",
-    description: "Daily transport allowance or shuttle service for school commute",
-    icon: Bus,
-    color: "teal",
-    estimatedAmount: "₦8,000 - ₦15,000/month",
-    deadline: "Monthly",
-    requirements: ["School location details", "Transport cost breakdown", "Attendance record"],
-  },
-];
+// Icon mapping for dynamic icons
+const getIconComponent = (iconName?: string) => {
+  if (!iconName) return FileText;
+  
+  const iconMap: Record<string, any> = {
+    GraduationCap,
+    DollarSign,
+    BookOpen,
+    FileText,
+    AlertCircle,
+    Bus,
+    Utensils,
+    Uniform,
+  };
+  
+  return iconMap[iconName] || FileText;
+};
+
+// Frequency display mapping
+const getFrequencyDisplay = (frequency: string) => {
+  const frequencyMap: Record<string, string> = {
+    once: "One-time",
+    termly: "Every Term",
+    monthly: "Monthly",
+    yearly: "Yearly",
+    per_semester: "Per Semester",
+  };
+  
+  return frequencyMap[frequency] || frequency;
+};
 
 export default function NewApplicationPage() {
   const { user } = useCurrentUser();
   const [showProfileSetup, setShowProfileSetup] = useState(false);
   const [selectedApplicationType, setSelectedApplicationType] = useState<string | null>(null);
+  const [initializingSupport, setInitializingSupport] = useState(false);
   
   // Check profile completion
   const profileCompletion = useQuery(
     api.users.checkProfileCompletion,
     user ? { userId: user._id } : "skip"
   );
+  
+  // Get eligible support configurations
+  const supportConfigs = useQuery(
+    api.supportConfig.getEligibleSupports,
+    user ? { userId: user._id, foundationId: user.foundationId! } : "skip"
+  );
+  
+  // Initialize support configs if none exist
+  const initializeSupport = useMutation(api.supportConfig.initializeDefaultConfigs);
 
   // If showing profile setup wizard
   if (showProfileSetup && user) {
@@ -112,16 +95,32 @@ export default function NewApplicationPage() {
     );
   }
 
-  const handleStartApplication = (applicationType: string) => {
+  const handleStartApplication = (supportType: string) => {
     if (!profileCompletion?.isComplete) {
-      toast.error("Please complete your profile before starting an application");
+      toast.error("Please complete your profile before applying");
+      setShowProfileSetup(true);
       return;
     }
     
-    setSelectedApplicationType(applicationType);
-    // TODO: Navigate to application form with pre-filled data
-    console.log("Starting application for:", applicationType);
-    toast.success(`Starting ${APPLICATION_TYPES.find(t => t.id === applicationType)?.title} application`);
+    // Navigate to application form with selected type
+    toast.success(`Starting ${supportType} application`);
+    setSelectedApplicationType(supportType);
+    // TODO: Navigate to actual application form
+  };
+  
+  const handleInitializeSupport = async () => {
+    if (!user?.foundationId) return;
+    
+    setInitializingSupport(true);
+    try {
+      await initializeSupport({ foundationId: user.foundationId });
+      toast.success("Support configurations initialized successfully");
+    } catch (error) {
+      toast.error("Failed to initialize support configurations");
+      console.error(error);
+    } finally {
+      setInitializingSupport(false);
+    }
   };
 
   if (!user) {
@@ -186,102 +185,176 @@ export default function NewApplicationPage() {
         )}
 
         {/* Application Types Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {APPLICATION_TYPES.map((applicationType) => {
-            const Icon = applicationType.icon;
-            const isDisabled = !profileCompletion?.isComplete;
-            
-            return (
-              <Card 
-                key={applicationType.id}
-                className={`transition-all duration-200 hover:shadow-lg hover:-translate-y-1 ${
-                  isDisabled 
-                    ? "opacity-60 cursor-not-allowed" 
-                    : "cursor-pointer hover:border-emerald-200"
-                }`}
-                onClick={() => !isDisabled && handleStartApplication(applicationType.id)}
-              >
+        {supportConfigs === undefined ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {[...Array(6)].map((_, i) => (
+              <Card key={i}>
                 <CardHeader>
-                  <div className="flex items-start justify-between">
-                    <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${
-                      applicationType.color === "emerald" ? "bg-emerald-100 text-emerald-600" :
-                      applicationType.color === "blue" ? "bg-blue-100 text-blue-600" :
-                      applicationType.color === "purple" ? "bg-purple-100 text-purple-600" :
-                      applicationType.color === "orange" ? "bg-orange-100 text-orange-600" :
-                      applicationType.color === "red" ? "bg-red-100 text-red-600" :
-                      applicationType.color === "teal" ? "bg-teal-100 text-teal-600" :
-                      "bg-gray-100 text-gray-600"
-                    }`}>
-                      <Icon className="w-6 h-6" />
-                    </div>
-                    
-                    {isDisabled && (
-                      <Lock className="w-5 h-5 text-gray-400" />
-                    )}
-                  </div>
-                  
-                  <CardTitle className="text-lg">{applicationType.title}</CardTitle>
-                  <CardDescription className="text-sm">
-                    {applicationType.description}
-                  </CardDescription>
+                  <Skeleton className="h-12 w-12 rounded-lg mb-4" />
+                  <Skeleton className="h-6 w-3/4 mb-2" />
+                  <Skeleton className="h-4 w-full" />
                 </CardHeader>
-                
-                <CardContent className="space-y-4">
-                  {/* Amount and Deadline */}
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-gray-600">Estimated Amount:</span>
-                      <span className="font-semibold text-gray-900">{applicationType.estimatedAmount}</span>
-                    </div>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-gray-600">Application Deadline:</span>
-                      <Badge variant="outline" className="text-xs">
-                        {applicationType.deadline}
-                      </Badge>
-                    </div>
-                  </div>
-                  
-                  {/* Requirements */}
-                  <div>
-                    <p className="text-sm font-medium text-gray-700 mb-2">Required Documents:</p>
-                    <ul className="space-y-1">
-                      {applicationType.requirements.slice(0, 2).map((requirement, index) => (
-                        <li key={index} className="text-xs text-gray-600 flex items-center gap-2">
-                          <CheckCircle className="w-3 h-3 text-green-500 flex-shrink-0" />
-                          {requirement}
-                        </li>
-                      ))}
-                      {applicationType.requirements.length > 2 && (
-                        <li className="text-xs text-gray-500">
-                          +{applicationType.requirements.length - 2} more requirements
-                        </li>
-                      )}
-                    </ul>
-                  </div>
-                  
-                  {/* Action Button */}
-                  <Button 
-                    className="w-full mt-4" 
-                    disabled={isDisabled}
-                    variant={isDisabled ? "secondary" : "default"}
-                  >
-                    {isDisabled ? (
-                      <>
-                        <Lock className="w-4 h-4 mr-2" />
-                        Complete Profile First
-                      </>
-                    ) : (
-                      <>
-                        Start Application
-                        <ArrowRight className="w-4 h-4 ml-2" />
-                      </>
-                    )}
-                  </Button>
+                <CardContent>
+                  <Skeleton className="h-20 w-full mb-4" />
+                  <Skeleton className="h-10 w-full" />
                 </CardContent>
               </Card>
-            );
-          })}
-        </div>
+            ))}
+          </div>
+        ) : supportConfigs && supportConfigs.length === 0 ? (
+          <Card className="col-span-full">
+            <CardContent className="flex flex-col items-center justify-center py-12">
+              <AlertCircle className="w-12 h-12 text-gray-400 mb-4" />
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                No Support Configurations Available
+              </h3>
+              <p className="text-gray-600 text-center mb-6">
+                {user?.role === "admin" || user?.role === "super_admin" 
+                  ? "Initialize support configurations to get started."
+                  : "No support types are currently available. Please contact an administrator."}
+              </p>
+              {(user?.role === "admin" || user?.role === "super_admin") && (
+                <Button 
+                  onClick={handleInitializeSupport}
+                  disabled={initializingSupport}
+                >
+                  {initializingSupport ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Initializing...
+                    </>
+                  ) : (
+                    "Initialize Default Configurations"
+                  )}
+                </Button>
+              )}
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {supportConfigs?.map((config) => {
+              const Icon = getIconComponent(config.icon);
+              const isDisabled = !profileCompletion?.isComplete;
+              const estimatedAmount = config.estimatedAmount;
+              
+              return (
+                <Card 
+                  key={config._id}
+                  className={`transition-all duration-200 ${
+                    isDisabled 
+                      ? "opacity-60 cursor-not-allowed" 
+                      : "cursor-pointer hover:border-emerald-200 hover:shadow-lg hover:-translate-y-1"
+                  }`}
+                  onClick={() => !isDisabled && handleStartApplication(config.supportType)}
+                >
+                  <CardHeader>
+                    <div className="flex items-start justify-between">
+                      <div className={`w-12 h-12 rounded-lg flex items-center justify-center ${
+                        config.color === "emerald" ? "bg-emerald-100 text-emerald-600" :
+                        config.color === "blue" ? "bg-blue-100 text-blue-600" :
+                        config.color === "purple" ? "bg-purple-100 text-purple-600" :
+                        config.color === "orange" ? "bg-orange-100 text-orange-600" :
+                        config.color === "red" ? "bg-red-100 text-red-600" :
+                        config.color === "teal" ? "bg-teal-100 text-teal-600" :
+                        "bg-gray-100 text-gray-600"
+                      }`}>
+                        <Icon className="w-6 h-6" />
+                      </div>
+                      
+                      {isDisabled && (
+                        <Lock className="w-5 h-5 text-gray-400" />
+                      )}
+                    </div>
+                    
+                    <CardTitle className="text-lg">{config.displayName}</CardTitle>
+                    <CardDescription className="text-sm">
+                      {config.description}
+                    </CardDescription>
+                  </CardHeader>
+                  
+                  <CardContent className="space-y-4">
+                    {/* Amount and Frequency */}
+                    <div className="space-y-2">
+                      {estimatedAmount && (
+                        <>
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-gray-600">Amount Range:</span>
+                            <span className="font-semibold text-gray-900">
+                              {formatCurrency(estimatedAmount.min, estimatedAmount.currency)} - 
+                              {formatCurrency(estimatedAmount.max, estimatedAmount.currency)}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-gray-600">Frequency:</span>
+                            <Badge variant="outline" className="text-xs">
+                              {getFrequencyDisplay(estimatedAmount.frequency)}
+                            </Badge>
+                          </div>
+                        </>
+                      )}
+                      {config.applicationSettings.applicationDeadline && (
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-gray-600">Deadline:</span>
+                          <span className="text-xs text-gray-700">
+                            {config.applicationSettings.applicationDeadline}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                    
+                    {/* Requirements */}
+                    {config.requiredDocuments.length > 0 && (
+                      <div>
+                        <p className="text-sm font-medium text-gray-700 mb-2">Required Documents:</p>
+                        <ul className="space-y-1">
+                          {config.requiredDocuments
+                            .filter(doc => doc.isMandatory)
+                            .slice(0, 2)
+                            .map((doc, index) => (
+                              <li key={index} className="text-xs text-gray-600 flex items-center gap-2">
+                                <CheckCircle className="w-3 h-3 text-green-500 flex-shrink-0" />
+                                {doc.displayName}
+                              </li>
+                            ))}
+                          {config.requiredDocuments.filter(doc => doc.isMandatory).length > 2 && (
+                            <li className="text-xs text-gray-500">
+                              +{config.requiredDocuments.filter(doc => doc.isMandatory).length - 2} more
+                            </li>
+                          )}
+                        </ul>
+                      </div>
+                    )}
+                    
+                    {/* Processing Time */}
+                    <div className="flex items-center gap-2 text-xs text-gray-600">
+                      <Calendar className="w-3 h-3" />
+                      Processing time: {config.applicationSettings.processingDays} days
+                    </div>
+                    
+                    {/* Action Button */}
+                    <Button 
+                      className="w-full mt-4" 
+                      disabled={isDisabled}
+                      variant={isDisabled ? "secondary" : "default"}
+                    >
+                      {isDisabled ? (
+                        <>
+                          <Lock className="w-4 h-4 mr-2" />
+                          Complete Profile First
+                        </>
+                      ) : (
+                        <>
+                          Start Application
+                          <ArrowRight className="w-4 h-4 ml-2" />
+                        </>
+                      )}
+                    </Button>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        )}
 
         {/* Help Section */}
         <Card className="mt-8">
@@ -316,7 +389,7 @@ export default function NewApplicationPage() {
                 <ul className="space-y-2 text-sm text-gray-600">
                   <li className="flex items-start gap-2">
                     <CheckCircle className="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" />
-                    School fees support covers up to 80% of tuition costs
+                    Support amounts are calculated based on your academic level and school type
                   </li>
                   <li className="flex items-start gap-2">
                     <CheckCircle className="w-4 h-4 text-green-500 mt-0.5 flex-shrink-0" />

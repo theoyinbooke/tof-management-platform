@@ -36,92 +36,49 @@ export function ProfileCompletionBanner({ onSetupProfile }: ProfileCompletionBan
 
   return (
     <Card className="mb-6 border-orange-200 bg-orange-50">
-      <CardContent className="p-4">
-        <div className="flex items-start gap-4">
-          <div className="w-10 h-10 bg-orange-100 text-orange-600 rounded-full flex items-center justify-center flex-shrink-0">
-            <AlertCircle className="w-5 h-5" />
+      <CardContent className="p-3">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 bg-orange-100 text-orange-600 rounded-full flex items-center justify-center flex-shrink-0">
+            <AlertCircle className="w-4 h-4" />
           </div>
           
           <div className="flex-1 min-w-0">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-lg font-semibold text-orange-800">
+            <div className="flex items-center gap-3">
+              <h3 className="text-sm font-semibold text-orange-800">
                 Complete Your Profile
               </h3>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setIsDismissed(true)}
-                className="text-orange-600 hover:text-orange-700 hover:bg-orange-100"
-              >
-                <X className="w-4 h-4" />
-              </Button>
+              <span className="text-xs text-orange-600">
+                {profileCompletion.completionPercentage}% complete
+              </span>
             </div>
             
-            <p className="text-orange-700 mb-4">
-              Please complete your profile setup to access all features and submit applications.
+            <p className="text-xs text-orange-700 mt-1">
+              Please complete your profile to access all features.
             </p>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <Progress 
+              value={profileCompletion.completionPercentage} 
+              className="h-1.5 w-20 bg-orange-100"
+            />
             
-            <div className="space-y-3">
-              {/* Progress Bar */}
-              <div>
-                <div className="flex justify-between items-center mb-2">
-                  <span className="text-sm font-medium text-orange-700">
-                    Profile Completion
-                  </span>
-                  <span className="text-sm text-orange-600">
-                    {profileCompletion.completionPercentage}%
-                  </span>
-                </div>
-                <Progress 
-                  value={profileCompletion.completionPercentage} 
-                  className="h-2 bg-orange-100"
-                />
-              </div>
-
-              {/* Missing Fields */}
-              {profileCompletion.missingFields.length > 0 && (
-                <div>
-                  <p className="text-sm font-medium text-orange-700 mb-2">
-                    Missing Information:
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    {profileCompletion.missingFields.slice(0, 5).map((field) => (
-                      <span
-                        key={field}
-                        className="inline-flex items-center gap-1 px-2 py-1 bg-orange-100 text-orange-700 text-xs rounded-full"
-                      >
-                        <AlertCircle className="w-3 h-3" />
-                        {field}
-                      </span>
-                    ))}
-                    {profileCompletion.missingFields.length > 5 && (
-                      <span className="inline-flex items-center px-2 py-1 bg-orange-100 text-orange-700 text-xs rounded-full">
-                        +{profileCompletion.missingFields.length - 5} more
-                      </span>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {/* Action Buttons */}
-              <div className="flex gap-3 pt-2">
-                <Button 
-                  onClick={onSetupProfile}
-                  className="bg-orange-600 hover:bg-orange-700 text-white"
-                >
-                  <User className="w-4 h-4 mr-2" />
-                  Complete Profile
-                </Button>
-                
-                <Button 
-                  variant="outline" 
-                  onClick={() => setIsDismissed(true)}
-                  className="border-orange-300 text-orange-700 hover:bg-orange-100"
-                >
-                  Remind Me Later
-                </Button>
-              </div>
-            </div>
+            <Button 
+              onClick={onSetupProfile}
+              size="sm"
+              className="bg-orange-600 hover:bg-orange-700 text-white h-7 px-3 text-xs"
+            >
+              Complete Profile
+            </Button>
+            
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setIsDismissed(true)}
+              className="text-orange-600 hover:text-orange-700 hover:bg-orange-100 h-7 w-7 p-0"
+            >
+              <X className="w-3.5 h-3.5" />
+            </Button>
           </div>
         </div>
       </CardContent>

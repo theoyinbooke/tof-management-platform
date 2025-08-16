@@ -40,6 +40,7 @@ import type * as reports from "../reports.js";
 import type * as resources from "../resources.js";
 import type * as schools from "../schools.js";
 import type * as setup from "../setup.js";
+import type * as supportConfig from "../supportConfig.js";
 import type * as users from "../users.js";
 
 /**
@@ -78,6 +79,7 @@ declare const fullApi: ApiFromModules<{
   resources: typeof resources;
   schools: typeof schools;
   setup: typeof setup;
+  supportConfig: typeof supportConfig;
   users: typeof users;
 }>;
 export declare const api: FilterApi<

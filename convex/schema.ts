@@ -339,6 +339,160 @@ export default defineSchema({
     .index("by_beneficiary_number", ["beneficiaryNumber"]),
 
   // ===================================
+  // SUPPORT CONFIGURATION SYSTEM
+  // ===================================
+
+  // Support types configuration
+  supportConfigurations: defineTable({
+    foundationId: v.id("foundations"),
+    
+    // Support Type Information
+    supportType: v.string(), // "school_fees", "upkeep", "books", "exam_fees", etc.
+    displayName: v.string(), // "School Fees Support", "Monthly Upkeep Allowance"
+    description: v.string(),
+    icon: v.optional(v.string()), // Icon name from lucide-react
+    color: v.optional(v.string()), // Color for UI display
+    
+    // Eligibility Rules
+    eligibilityRules: v.object({
+      minAcademicLevel: v.optional(v.string()), // "primary_1"
+      maxAcademicLevel: v.optional(v.string()), // "university_5"
+      minAge: v.optional(v.number()),
+      maxAge: v.optional(v.number()),
+      requiresMinGrade: v.optional(v.number()), // Minimum average grade percentage
+      genderRestriction: v.optional(v.union(v.literal("male"), v.literal("female"))),
+      schoolTypeRestriction: v.optional(v.array(v.string())), // ["public", "private"]
+      specialConditions: v.optional(v.array(v.string())), // ["orphan", "disability", "gap_year"]
+    }),
+    
+    // Amount Configuration (per academic level)
+    amountConfig: v.array(v.object({
+      academicLevel: v.string(), // "primary_1-6", "jss_1-3", "sss_1-3", "university"
+      minAmount: v.number(),
+      maxAmount: v.number(),
+      defaultAmount: v.number(),
+      currency: v.union(v.literal("NGN"), v.literal("USD")),
+      
+      // Frequency
+      frequency: v.union(
+        v.literal("once"), 
+        v.literal("termly"), 
+        v.literal("monthly"), 
+        v.literal("yearly"),
+        v.literal("per_semester")
+      ),
+      
+      // School type variations
+      schoolTypeMultipliers: v.optional(v.object({
+        public: v.number(), // 1.0
+        private: v.number(), // 1.5
+        international: v.number(), // 2.0
+      })),
+    })),
+    
+    // Required Documents
+    requiredDocuments: v.array(v.object({
+      documentType: v.string(), // "report_card", "fee_invoice", "bank_statement"
+      displayName: v.string(),
+      description: v.optional(v.string()),
+      isMandatory: v.boolean(),
+      validityPeriod: v.optional(v.number()), // Days document remains valid
+    })),
+    
+    // Application Settings
+    applicationSettings: v.object({
+      allowMultipleApplications: v.boolean(),
+      applicationDeadline: v.optional(v.string()), // "30 days before term start"
+      autoApprovalThreshold: v.optional(v.number()), // Auto-approve if score >= this
+      requiresGuardianConsent: v.boolean(),
+      requiresAcademicVerification: v.boolean(),
+      processingDays: v.number(), // Expected processing time
+    }),
+    
+    // Performance Requirements
+    performanceRequirements: v.optional(v.object({
+      minAttendance: v.optional(v.number()), // Percentage
+      minGradeForRenewal: v.optional(v.number()), // Percentage
+      improvementRequired: v.optional(v.boolean()), // Must show improvement
+      reviewFrequency: v.optional(v.string()), // "termly", "yearly"
+    })),
+    
+    // Priority Scoring (for automatic calculation)
+    priorityWeights: v.object({
+      academicPerformance: v.number(), // 0-1 weight
+      financialNeed: v.number(), // 0-1 weight
+      attendance: v.number(), // 0-1 weight
+      specialCircumstances: v.number(), // 0-1 weight
+      previousSupport: v.number(), // 0-1 weight (negative for diversity)
+    }),
+    
+    // Status
+    isActive: v.boolean(),
+    startDate: v.optional(v.string()),
+    endDate: v.optional(v.string()),
+    
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    createdBy: v.id("users"),
+    updatedBy: v.optional(v.id("users")),
+  }).index("by_foundation", ["foundationId"])
+    .index("by_support_type", ["foundationId", "supportType"])
+    .index("by_active", ["foundationId", "isActive"]),
+
+  // Support allocations (actual support given to beneficiaries)
+  supportAllocations: defineTable({
+    foundationId: v.id("foundations"),
+    beneficiaryId: v.id("beneficiaries"),
+    supportConfigId: v.id("supportConfigurations"),
+    applicationId: v.optional(v.id("applications")),
+    
+    // Support Details
+    supportType: v.string(), // Denormalized for quick access
+    amount: v.number(),
+    currency: v.union(v.literal("NGN"), v.literal("USD")),
+    frequency: v.string(),
+    
+    // Period
+    startDate: v.string(),
+    endDate: v.optional(v.string()),
+    academicSessionId: v.optional(v.id("academicSessions")),
+    
+    // Status
+    status: v.union(
+      v.literal("pending"),
+      v.literal("active"),
+      v.literal("suspended"),
+      v.literal("completed"),
+      v.literal("cancelled")
+    ),
+    
+    // Disbursement tracking
+    totalDisbursed: v.number(),
+    lastDisbursementDate: v.optional(v.string()),
+    nextDisbursementDate: v.optional(v.string()),
+    disbursementCount: v.number(),
+    
+    // Performance tracking
+    performanceScore: v.optional(v.number()), // Current performance against requirements
+    lastReviewDate: v.optional(v.string()),
+    nextReviewDate: v.optional(v.string()),
+    
+    // Notes
+    notes: v.optional(v.string()),
+    suspensionReason: v.optional(v.string()),
+    cancellationReason: v.optional(v.string()),
+    
+    createdAt: v.number(),
+    updatedAt: v.number(),
+    approvedBy: v.optional(v.id("users")),
+    approvedAt: v.optional(v.number()),
+  }).index("by_foundation", ["foundationId"])
+    .index("by_beneficiary", ["beneficiaryId"])
+    .index("by_support_config", ["supportConfigId"])
+    .index("by_status", ["foundationId", "status"])
+    .index("by_academic_session", ["academicSessionId"]),
+
+  // ===================================
   // ACADEMIC MANAGEMENT SYSTEM
   // ===================================
 

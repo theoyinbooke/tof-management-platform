@@ -1,5 +1,16 @@
 @import "tailwindcss";
 
+/* Hide scrollbars utility class */
+@layer utilities {
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;  /* IE and Edge */
+    scrollbar-width: none;  /* Firefox */
+  }
+}
+
 @theme {
   /* Design System Colors */
   --color-primary: #16a34a;
