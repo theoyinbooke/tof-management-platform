@@ -330,7 +330,7 @@ export default function LandingPage() {
       {/* Footer */}
       <footer className="py-12 px-6 bg-gray-900 text-white">
         <div className="container mx-auto max-w-6xl">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-8">
             <div>
               <div className="flex items-center gap-2 mb-4">
                 <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center">
@@ -361,6 +361,13 @@ export default function LandingPage() {
               </ul>
             </div>
             <div>
+              <h4 className="font-semibold mb-4">Legal</h4>
+              <ul className="space-y-2 text-gray-400 text-sm">
+                <li><Link href="/privacy-policy" className="hover:text-white transition-colors">Privacy Policy</Link></li>
+                <li><Link href="/terms-of-service" className="hover:text-white transition-colors">Terms of Service</Link></li>
+              </ul>
+            </div>
+            <div>
               <h4 className="font-semibold mb-4">Contact</h4>
               <ul className="space-y-2 text-gray-400 text-sm">
                 <li>Lagos, Nigeria</li>
@@ -370,7 +377,13 @@ export default function LandingPage() {
             </div>
           </div>
           <div className="border-t border-gray-800 mt-8 pt-8 text-center text-gray-400 text-sm">
-            <p>&copy; 2024 TheOyinbooke Foundation. All rights reserved.</p>
+            <div className="flex flex-col md:flex-row items-center justify-between gap-4">
+              <p>&copy; 2024 TheOyinbooke Foundation. All rights reserved.</p>
+              <div className="flex gap-6">
+                <Link href="/privacy-policy" className="hover:text-white transition-colors">Privacy Policy</Link>
+                <Link href="/terms-of-service" className="hover:text-white transition-colors">Terms of Service</Link>
+              </div>
+            </div>
           </div>
         </div>
       </footer>
