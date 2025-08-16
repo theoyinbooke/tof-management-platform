@@ -1,6 +1,5 @@
 "use client";
 
-import { ProtectedRoute } from "@/components/auth/protected-route";
 import { useCurrentUser } from "@/hooks/use-current-user";
 import { AdminDashboard } from "@/components/dashboards/admin-dashboard";
 import { BeneficiaryDashboard } from "@/components/dashboards/beneficiary-dashboard";
@@ -28,9 +27,5 @@ export default function DashboardPage() {
     }
   };
 
-  return (
-    <ProtectedRoute>
-      {renderDashboard()}
-    </ProtectedRoute>
-  );
+  return renderDashboard();
 }
