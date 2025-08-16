@@ -477,8 +477,26 @@ export const getPerformanceMetrics = query({
       .withIndex("by_foundation", (q) => q.eq("foundationId", args.foundationId))
       .collect();
     
-    const academicAverage = performanceRecords.length > 0
-      ? Math.round(performanceRecords.reduce((sum, record) => sum + (record.overallGrade || 0), 0) / performanceRecords.length)
+    // Calculate average for all beneficiaries
+    let totalGrade = 0;
+    let recordCount = 0;
+    
+    for (const beneficiary of beneficiaries) {
+      const records = await ctx.db
+        .query("performanceRecords")
+        .withIndex("by_beneficiary", (q) => q.eq("beneficiaryId", beneficiary._id))
+        .collect();
+      
+      for (const record of records) {
+        if (record.overallGrade) {
+          totalGrade += record.overallGrade;
+          recordCount++;
+        }
+      }
+    }
+    
+    const academicAverage = recordCount > 0
+      ? Math.round(totalGrade / recordCount)
       : 75; // Default placeholder
     
     // Financial disbursement rate (placeholder - would need actual payment data)
