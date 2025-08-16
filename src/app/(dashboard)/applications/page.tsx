@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../../convex/_generated/api";
 import { useCurrentUser } from "@/hooks/use-current-user";
+import { usePagination } from "@/hooks/use-pagination";
 import { ProtectedRoute } from "@/components/auth/protected-route";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,6 +12,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
+import { DataTablePagination } from "@/components/ui/data-table-pagination";
 import { 
   Search, 
   Filter, 
@@ -75,6 +77,23 @@ export default function ApplicationsPage() {
     } : "skip"
   );
 
+  // Initialize pagination
+  const {
+    currentPage,
+    pageSize,
+    totalPages,
+    paginatedRange,
+    handlePageChange,
+    handlePageSizeChange,
+    resetPagination,
+  } = usePagination({
+    totalItems: applications?.length || 0,
+    initialPageSize: 15,
+  });
+
+  // Get paginated applications
+  const paginatedApplications = applications?.slice(paginatedRange.start, paginatedRange.end) || [];
+
   // Fetch application statistics
   const stats = useQuery(
     api.applications.getApplicationStats,
@@ -98,23 +117,6 @@ export default function ApplicationsPage() {
   const convertToBeneficiary = useMutation(api.applications.convertToBeneficiary);
   const bulkConvertToBeneficiaries = useMutation(api.applications.bulkConvertToBeneficiaries);
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case "submitted":
-        return <Badge variant="secondary" className="bg-blue-100 text-blue-800">New</Badge>;
-      case "under_review":
-        return <Badge variant="secondary" className="bg-yellow-100 text-yellow-800">Under Review</Badge>;
-      case "approved":
-        return <Badge variant="secondary" className="bg-green-100 text-green-800">Approved</Badge>;
-      case "rejected":
-        return <Badge variant="secondary" className="bg-red-100 text-red-800">Rejected</Badge>;
-      case "waitlisted":
-        return <Badge variant="secondary" className="bg-purple-100 text-purple-800">Waitlisted</Badge>;
-      default:
-        return <Badge variant="outline">{status}</Badge>;
-    }
-  };
-
   const handleAssignReviewer = async (applicationId: Id<"applications">, reviewerId: Id<"users">) => {
     try {
       await assignReviewer({ applicationId, reviewerId });
@@ -124,49 +126,60 @@ export default function ApplicationsPage() {
     }
   };
 
-  const handleStatusUpdate = async (applicationId: Id<"applications">, status: string, comments?: string) => {
+  const handleStatusUpdate = async (applicationId: Id<"applications">, status: string) => {
     try {
-      await updateStatus({
-        applicationId,
+      await updateStatus({ 
+        applicationId, 
         status: status as any,
-        reviewComments: comments
+        comments: ""
       });
-      toast.success("Application status updated");
+      toast.success(`Application status updated to ${status}`);
     } catch (error) {
       toast.error("Failed to update status");
     }
   };
 
   const handleBulkAction = async () => {
-    if (selectedApplications.length === 0 || !bulkActionDialog) return;
+    if (!bulkActionDialog || selectedApplications.length === 0) return;
 
     try {
       if (bulkActionDialog === "approve") {
         await bulkApprove({
           applicationIds: selectedApplications,
-          reviewComments: bulkComments
+          comments: bulkComments
         });
-        toast.success(`${selectedApplications.length} applications approved`);
+        
+        // Convert approved applications to beneficiaries
+        await bulkConvertToBeneficiaries({
+          applicationIds: selectedApplications
+        });
+        
+        toast.success(`${selectedApplications.length} applications approved and converted to beneficiaries`);
+      } else {
+        // Handle bulk reject
+        for (const id of selectedApplications) {
+          await updateStatus({
+            applicationId: id,
+            status: "rejected",
+            comments: bulkComments
+          });
+        }
+        toast.success(`${selectedApplications.length} applications rejected`);
       }
+      
       setSelectedApplications([]);
       setBulkActionDialog(null);
       setBulkComments("");
     } catch (error) {
-      toast.error("Bulk action failed");
+      toast.error("Failed to perform bulk action");
     }
   };
 
-  const handleCreateBeneficiary = async (applicationId: Id<"applications">) => {
-    if (!foundationId) return;
-    
-    try {
-      await createBeneficiaryFromApplication({
-        applicationId,
-        foundationId
-      });
-      toast.success("Beneficiary created successfully!");
-    } catch (error: any) {
-      toast.error(error.message || "Failed to create beneficiary");
+  const selectAllApplications = (checked: boolean) => {
+    if (checked && paginatedApplications) {
+      setSelectedApplications(paginatedApplications.map(app => app._id));
+    } else {
+      setSelectedApplications([]);
     }
   };
 
@@ -178,24 +191,48 @@ export default function ApplicationsPage() {
     );
   };
 
-  const selectAllApplications = () => {
-    if (!applications) return;
-    
-    if (selectedApplications.length === applications.length) {
-      setSelectedApplications([]);
-    } else {
-      setSelectedApplications(applications.map(app => app._id));
+  const getStatusIcon = (status: string) => {
+    switch (status) {
+      case "submitted":
+      case "pending":
+        return <Clock className="w-4 h-4 text-blue-600" />;
+      case "under_review":
+        return <AlertCircle className="w-4 h-4 text-yellow-600" />;
+      case "approved":
+        return <CheckCircle className="w-4 h-4 text-green-600" />;
+      case "rejected":
+        return <XCircle className="w-4 h-4 text-red-600" />;
+      default:
+        return null;
+    }
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case "submitted":
+      case "pending":
+        return "bg-blue-100 text-blue-800";
+      case "under_review":
+        return "bg-yellow-100 text-yellow-800";
+      case "approved":
+        return "bg-green-100 text-green-800";
+      case "rejected":
+        return "bg-red-100 text-red-800";
+      default:
+        return "bg-gray-100 text-gray-800";
     }
   };
 
   return (
-    <ProtectedRoute allowedRoles={["admin", "super_admin", "reviewer"]}>
+    <ProtectedRoute allowedRoles={["super_admin", "admin", "reviewer"]}>
       <div className="container mx-auto p-6 space-y-6">
         {/* Header */}
         <div className="flex justify-between items-center">
           <div>
-            <h1 className="text-3xl font-bold">Application Review</h1>
-            <p className="text-gray-600 mt-1">Review and manage scholarship applications</p>
+            <h1 className="text-3xl font-bold">Applications</h1>
+            <p className="text-gray-600 mt-1">
+              Review and manage scholarship applications
+            </p>
           </div>
           <div className="flex gap-2">
             <Button variant="outline">
@@ -205,7 +242,7 @@ export default function ApplicationsPage() {
             {selectedApplications.length > 0 && (
               <Button 
                 onClick={() => setBulkActionDialog("approve")}
-                className="bg-green-600 hover:bg-green-700"
+                className="bg-emerald-600 hover:bg-emerald-700"
               >
                 <CheckCircle className="w-4 h-4 mr-2" />
                 Bulk Approve ({selectedApplications.length})
@@ -216,7 +253,7 @@ export default function ApplicationsPage() {
 
         {/* Statistics Cards */}
         <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
-          <Card>
+          <Card className="border-gray-200">
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-sm font-medium text-gray-600">Total Applications</CardTitle>
@@ -229,52 +266,52 @@ export default function ApplicationsPage() {
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="border-gray-200">
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-sm font-medium text-gray-600">New</CardTitle>
-                <Clock className="w-4 h-4 text-blue-600" />
+                <Clock className="w-4 h-4 text-sky-600" />
               </div>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-blue-600">
+              <div className="text-2xl font-bold text-sky-600">
                 {stats?.pending || 0}
               </div>
               <p className="text-xs text-gray-600 mt-1">Awaiting review</p>
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="border-gray-200">
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-sm font-medium text-gray-600">Under Review</CardTitle>
-                <AlertCircle className="w-4 h-4 text-yellow-600" />
+                <AlertCircle className="w-4 h-4 text-amber-600" />
               </div>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-yellow-600">
+              <div className="text-2xl font-bold text-amber-600">
                 {stats?.underReview || 0}
               </div>
               <p className="text-xs text-gray-600 mt-1">Being reviewed</p>
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="border-gray-200">
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-sm font-medium text-gray-600">Approved</CardTitle>
-                <CheckCircle className="w-4 h-4 text-green-600" />
+                <CheckCircle className="w-4 h-4 text-emerald-600" />
               </div>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-green-600">
+              <div className="text-2xl font-bold text-emerald-600">
                 {stats?.approved || 0}
               </div>
               <p className="text-xs text-gray-600 mt-1">Ready for enrollment</p>
             </CardContent>
           </Card>
 
-          <Card>
+          <Card className="border-gray-200">
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-sm font-medium text-gray-600">Rejected</CardTitle>
@@ -291,7 +328,7 @@ export default function ApplicationsPage() {
         </div>
 
         {/* Filters and Search */}
-        <Card>
+        <Card className="border-gray-200">
           <CardHeader>
             <div className="flex flex-col md:flex-row gap-4">
               <div className="flex-1">
@@ -300,12 +337,18 @@ export default function ApplicationsPage() {
                   <Input
                     placeholder="Search by name, email, or application number..."
                     value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
+                    onChange={(e) => {
+                      setSearchQuery(e.target.value);
+                      resetPagination();
+                    }}
                     className="pl-10"
                   />
                 </div>
               </div>
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <Select value={statusFilter} onValueChange={(value) => {
+                setStatusFilter(value);
+                resetPagination();
+              }}>
                 <SelectTrigger className="w-[180px]">
                   <SelectValue placeholder="All Statuses" />
                 </SelectTrigger>
@@ -327,196 +370,209 @@ export default function ApplicationsPage() {
         </Card>
 
         {/* Applications Table */}
-        <Card>
+        <Card className="border-gray-200">
           <CardHeader>
             <div className="flex justify-between items-center">
               <div>
-                <CardTitle>Applications ({applications?.length || 0})</CardTitle>
+                <CardTitle>Applications</CardTitle>
                 <CardDescription>
-                  Review and manage scholarship applications
+                  Showing {paginatedRange.start + 1}-{Math.min(paginatedRange.end, applications?.length || 0)} of {applications?.length || 0} applications
                 </CardDescription>
               </div>
               <div className="flex items-center gap-2">
                 <Checkbox
-                  checked={applications?.length > 0 && selectedApplications.length === applications.length}
+                  checked={paginatedApplications.length > 0 && selectedApplications.length === paginatedApplications.length}
                   onCheckedChange={selectAllApplications}
                 />
                 <span className="text-sm text-gray-600">Select All</span>
               </div>
             </div>
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-0">
             <div className="overflow-x-auto">
               <table className="w-full">
-                <thead>
-                  <tr className="border-b">
-                    <th className="text-left p-2 font-medium text-gray-700 w-12">
-                      <span className="sr-only">Select</span>
+                <thead className="bg-gray-50 border-y border-gray-200">
+                  <tr>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Select
                     </th>
-                    <th className="text-left p-2 font-medium text-gray-700">Applicant</th>
-                    <th className="text-left p-2 font-medium text-gray-700">Academic Level</th>
-                    <th className="text-left p-2 font-medium text-gray-700">Status</th>
-                    <th className="text-left p-2 font-medium text-gray-700">Reviewer</th>
-                    <th className="text-left p-2 font-medium text-gray-700">Applied</th>
-                    <th className="text-left p-2 font-medium text-gray-700">Actions</th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Applicant
+                    </th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Academic Level
+                    </th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Applied
+                    </th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Status
+                    </th>
+                    <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Reviewer
+                    </th>
+                    <th className="px-4 py-2 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Actions
+                    </th>
                   </tr>
                 </thead>
-                <tbody>
-                  {applications?.map((application) => (
-                    <tr key={application._id} className="border-b hover:bg-gray-50">
-                      <td className="p-2">
-                        <Checkbox
-                          checked={selectedApplications.includes(application._id)}
-                          onCheckedChange={() => toggleApplicationSelection(application._id)}
-                        />
-                      </td>
-                      <td className="p-2">
-                        <div>
-                          <div className="font-medium">
-                            {application.firstName} {application.lastName}
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {paginatedApplications.length > 0 ? (
+                    paginatedApplications.map((application) => (
+                      <tr key={application._id} className="hover:bg-gray-50 transition-colors">
+                        <td className="px-4 py-3">
+                          <Checkbox
+                            checked={selectedApplications.includes(application._id)}
+                            onCheckedChange={() => toggleApplicationSelection(application._id)}
+                          />
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center">
+                            <div className="h-8 w-8 rounded-full bg-emerald-100 flex items-center justify-center">
+                              <User className="h-4 w-4 text-emerald-600" />
+                            </div>
+                            <div className="ml-3">
+                              <div className="text-sm font-medium text-gray-900">
+                                {application.firstName} {application.lastName}
+                              </div>
+                              <div className="text-xs text-gray-500">{application.email}</div>
+                            </div>
                           </div>
-                          <div className="text-sm text-gray-600">
-                            {application.applicationNumber}
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="text-sm text-gray-900">{application.academicLevel}</div>
+                          <div className="text-xs text-gray-500">{application.currentSchool}</div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="text-sm text-gray-900">
+                            {formatDate(new Date(application.createdAt))}
                           </div>
-                          <div className="text-xs text-gray-500">
-                            {application.email}
-                          </div>
-                        </div>
-                      </td>
-                      <td className="p-2">
-                        <div className="text-sm">
-                          <Badge variant="outline">
-                            {application.education.currentLevel}
+                        </td>
+                        <td className="px-4 py-3">
+                          <Badge className={`${getStatusColor(application.status)} border-0`}>
+                            <span className="flex items-center gap-1">
+                              {getStatusIcon(application.status)}
+                              {application.status.replace("_", " ")}
+                            </span>
                           </Badge>
-                          <div className="text-xs text-gray-600 mt-1">
-                            {application.education.currentSchool}
-                          </div>
-                        </div>
-                      </td>
-                      <td className="p-2">
-                        {getStatusBadge(application.status)}
-                      </td>
-                      <td className="p-2">
-                        {application.reviewer ? (
-                          <div className="text-sm">
-                            <div className="font-medium">
-                              {application.reviewer.firstName} {application.reviewer.lastName}
+                        </td>
+                        <td className="px-4 py-3">
+                          {application.reviewerId ? (
+                            <div className="text-sm text-gray-900">
+                              {reviewers?.find(r => r._id === application.reviewerId)?.firstName || "Assigned"}
                             </div>
-                            <div className="text-xs text-gray-500">
-                              {application.reviewer.role}
-                            </div>
-                          </div>
-                        ) : (
-                          <Select
-                            onValueChange={(reviewerId) => handleAssignReviewer(application._id, reviewerId as Id<"users">)}
-                          >
-                            <SelectTrigger className="w-32 h-8">
-                              <SelectValue placeholder="Assign" />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {reviewers?.map((reviewer) => (
-                                <SelectItem key={reviewer._id} value={reviewer._id}>
-                                  {reviewer.firstName} {reviewer.lastName}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        )}
-                      </td>
-                      <td className="p-2">
-                        <div className="text-sm">
-                          {formatDate(application.submittedAt || application.createdAt)}
-                        </div>
-                      </td>
-                      <td className="p-2">
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button variant="ghost" size="sm">
-                              <MoreHorizontal className="w-4 h-4" />
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent align="end">
-                            <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem
+                          ) : (
+                            <Select 
+                              onValueChange={(value) => handleAssignReviewer(application._id, value as Id<"users">)}
+                            >
+                              <SelectTrigger className="w-[120px] h-8 text-xs">
+                                <SelectValue placeholder="Assign..." />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {reviewers?.map((reviewer) => (
+                                  <SelectItem key={reviewer._id} value={reviewer._id}>
+                                    {reviewer.firstName} {reviewer.lastName}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <Button
+                              variant="ghost"
+                              size="sm"
                               onClick={() => router.push(`/applications/review/${application._id}`)}
                             >
-                              <Eye className="w-4 h-4 mr-2" />
-                              Review Application
-                            </DropdownMenuItem>
-                            <DropdownMenuSeparator />
-                            {application.status !== "approved" && (
-                              <DropdownMenuItem
-                                onClick={() => handleStatusUpdate(application._id, "approved")}
-                                className="text-green-600"
-                              >
-                                <CheckCircle className="w-4 h-4 mr-2" />
-                                Approve
-                              </DropdownMenuItem>
-                            )}
-                            {application.status === "approved" && (
-                              <DropdownMenuItem
-                                onClick={() => handleCreateBeneficiary(application._id)}
-                                className="text-blue-600"
-                              >
-                                <UserPlus className="w-4 h-4 mr-2" />
-                                Create Beneficiary
-                              </DropdownMenuItem>
-                            )}
-                            {application.status !== "rejected" && (
-                              <DropdownMenuItem
-                                onClick={() => handleStatusUpdate(application._id, "rejected")}
-                                className="text-red-600"
-                              >
-                                <XCircle className="w-4 h-4 mr-2" />
-                                Reject
-                              </DropdownMenuItem>
-                            )}
-                            <DropdownMenuItem
-                              onClick={() => handleStatusUpdate(application._id, "waitlisted")}
-                              className="text-purple-600"
-                            >
-                              <Clock className="w-4 h-4 mr-2" />
-                              Waitlist
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="sm">
+                                  <MoreHorizontal className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end">
+                                <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem onClick={() => router.push(`/applications/review/${application._id}`)}>
+                                  <Eye className="w-4 h-4 mr-2" />
+                                  View Details
+                                </DropdownMenuItem>
+                                <DropdownMenuItem onClick={() => handleStatusUpdate(application._id, "under_review")}>
+                                  <AlertCircle className="w-4 h-4 mr-2" />
+                                  Mark as Under Review
+                                </DropdownMenuItem>
+                                <DropdownMenuItem 
+                                  onClick={() => handleStatusUpdate(application._id, "approved")}
+                                  className="text-green-600"
+                                >
+                                  <CheckCircle className="w-4 h-4 mr-2" />
+                                  Approve
+                                </DropdownMenuItem>
+                                <DropdownMenuItem 
+                                  onClick={() => handleStatusUpdate(application._id, "rejected")}
+                                  className="text-red-600"
+                                >
+                                  <XCircle className="w-4 h-4 mr-2" />
+                                  Reject
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={7} className="px-4 py-12 text-center">
+                        <div className="flex flex-col items-center">
+                          <FileText className="h-12 w-12 text-gray-300 mb-3" />
+                          <p className="text-gray-500">No applications found</p>
+                          <p className="text-sm text-gray-400 mt-1">
+                            Applications will appear here when submitted
+                          </p>
+                        </div>
                       </td>
                     </tr>
-                  ))}
+                  )}
                 </tbody>
               </table>
-
-              {applications?.length === 0 && (
-                <div className="text-center py-12">
-                  <FileText className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                  <p className="text-gray-600">No applications found</p>
-                  <p className="text-sm text-gray-400 mt-1">
-                    Applications will appear here once students submit them
-                  </p>
-                </div>
-              )}
             </div>
+            
+            {/* Pagination */}
+            {applications && applications.length > 0 && (
+              <DataTablePagination
+                currentPage={currentPage}
+                totalPages={totalPages}
+                pageSize={pageSize}
+                totalItems={applications.length}
+                onPageChange={handlePageChange}
+                onPageSizeChange={handlePageSizeChange}
+                pageSizeOptions={[15, 25, 50]}
+              />
+            )}
           </CardContent>
         </Card>
 
         {/* Bulk Action Dialog */}
-        <Dialog open={bulkActionDialog !== null} onOpenChange={() => setBulkActionDialog(null)}>
+        <Dialog open={!!bulkActionDialog} onOpenChange={() => setBulkActionDialog(null)}>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>
-                Bulk {bulkActionDialog === "approve" ? "Approve" : "Reject"} Applications
+                {bulkActionDialog === "approve" ? "Approve Applications" : "Reject Applications"}
               </DialogTitle>
               <DialogDescription>
-                You are about to {bulkActionDialog} {selectedApplications.length} applications.
-                This action cannot be undone.
+                You are about to {bulkActionDialog} {selectedApplications.length} application(s).
+                {bulkActionDialog === "approve" && " Approved applications will be converted to beneficiaries."}
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
               <div>
                 <label className="text-sm font-medium">Comments (Optional)</label>
                 <Textarea
-                  placeholder="Add comments for this bulk action..."
+                  placeholder="Add any comments or notes..."
                   value={bulkComments}
                   onChange={(e) => setBulkComments(e.target.value)}
                   className="mt-1"
@@ -529,9 +585,9 @@ export default function ApplicationsPage() {
               </Button>
               <Button 
                 onClick={handleBulkAction}
-                className={bulkActionDialog === "approve" ? "bg-green-600 hover:bg-green-700" : "bg-red-600 hover:bg-red-700"}
+                className={bulkActionDialog === "approve" ? "bg-emerald-600 hover:bg-emerald-700" : "bg-red-600 hover:bg-red-700"}
               >
-                {bulkActionDialog === "approve" ? "Approve" : "Reject"} {selectedApplications.length} Applications
+                {bulkActionDialog === "approve" ? "Approve All" : "Reject All"}
               </Button>
             </DialogFooter>
           </DialogContent>

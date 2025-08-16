@@ -25,6 +25,7 @@ import type * as authHelpers from "../authHelpers.js";
 import type * as beneficiaries from "../beneficiaries.js";
 import type * as clerk from "../clerk.js";
 import type * as communications from "../communications.js";
+import type * as dashboard from "../dashboard.js";
 import type * as documents from "../documents.js";
 import type * as files from "../files.js";
 import type * as financial from "../financial.js";
@@ -62,6 +63,7 @@ declare const fullApi: ApiFromModules<{
   beneficiaries: typeof beneficiaries;
   clerk: typeof clerk;
   communications: typeof communications;
+  dashboard: typeof dashboard;
   documents: typeof documents;
   files: typeof files;
   financial: typeof financial;
