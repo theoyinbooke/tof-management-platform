@@ -1,4 +1,7 @@
 import { Metadata } from "next";
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
+import { ArrowLeft, Home } from "lucide-react";
 
 export const metadata: Metadata = {
   title: "Terms of Service | TheOyinbooke Foundation",
@@ -7,7 +10,43 @@ export const metadata: Metadata = {
 
 export default function TermsOfServicePage() {
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-white">
+      {/* Navigation */}
+      <nav className="sticky top-0 w-full bg-white/95 backdrop-blur-sm border-b border-gray-200 z-50">
+        <div className="container mx-auto px-6 py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
+                <span className="text-white font-bold text-sm">TOF</span>
+              </div>
+              <div>
+                <h2 className="font-semibold text-gray-900">TheOyinbooke Foundation</h2>
+              </div>
+            </div>
+            <div className="flex items-center gap-4">
+              <Link href="/">
+                <Button variant="outline" size="sm">
+                  <Home className="h-4 w-4 mr-2" />
+                  Home
+                </Button>
+              </Link>
+              <Link href="/privacy-policy">
+                <Button variant="ghost" size="sm">
+                  Privacy Policy
+                </Button>
+              </Link>
+              <Link href="/sign-in">
+                <Button variant="outline">Sign In</Button>
+              </Link>
+              <Link href="/sign-up">
+                <Button>Get Started</Button>
+              </Link>
+            </div>
+          </div>
+        </div>
+      </nav>
+
+      <div className="bg-gray-50 min-h-screen">
       <div className="container mx-auto px-4 py-16 max-w-4xl">
         <div className="bg-white rounded-lg shadow-sm p-8 space-y-8">
           <div className="text-center border-b border-gray-200 pb-8">
@@ -279,6 +318,32 @@ export default function TermsOfServicePage() {
           </section>
         </div>
       </div>
+      </div>
+
+      {/* Footer */}
+      <footer className="py-8 px-6 bg-gray-900 text-white">
+        <div className="container mx-auto max-w-4xl">
+          <div className="text-center space-y-4">
+            <div className="flex items-center justify-center gap-2 mb-4">
+              <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center">
+                <span className="text-primary font-bold text-sm">TOF</span>
+              </div>
+              <h3 className="font-semibold">TheOyinbooke Foundation</h3>
+            </div>
+            <p className="text-gray-400 text-sm">
+              Empowering Nigerian students through comprehensive educational support.
+            </p>
+            <div className="flex justify-center gap-6 text-sm">
+              <Link href="/" className="hover:text-white transition-colors">Home</Link>
+              <Link href="/privacy-policy" className="hover:text-white transition-colors">Privacy Policy</Link>
+              <Link href="/terms-of-service" className="text-white">Terms of Service</Link>
+            </div>
+            <div className="border-t border-gray-800 pt-4 text-center text-gray-400 text-sm">
+              <p>&copy; 2024 TheOyinbooke Foundation. All rights reserved.</p>
+            </div>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }

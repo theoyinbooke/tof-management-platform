@@ -36,6 +36,7 @@ import type * as notifications from "../notifications.js";
 import type * as programTypes from "../programTypes.js";
 import type * as programs from "../programs.js";
 import type * as reports from "../reports.js";
+import type * as resources from "../resources.js";
 import type * as schools from "../schools.js";
 import type * as setup from "../setup.js";
 import type * as users from "../users.js";
@@ -72,6 +73,7 @@ declare const fullApi: ApiFromModules<{
   programTypes: typeof programTypes;
   programs: typeof programs;
   reports: typeof reports;
+  resources: typeof resources;
   schools: typeof schools;
   setup: typeof setup;
   users: typeof users;

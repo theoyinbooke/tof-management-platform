@@ -13,9 +13,9 @@ interface MainLayoutProps {
 export function MainLayout({ children }: MainLayoutProps) {
   const pathname = usePathname();
   
-  // Don't show layout on auth pages
+  // Don't show layout on auth pages and public pages
   const isAuthPage = pathname.startsWith("/sign-in") || pathname.startsWith("/sign-up") || pathname.startsWith("/accept-invitation");
-  const isPublicPage = pathname === "/" || pathname === "/design-system" || pathname === "/apply";
+  const isPublicPage = pathname === "/" || pathname === "/design-system" || pathname === "/apply" || pathname === "/privacy-policy" || pathname === "/terms-of-service";
   
   if (isAuthPage || isPublicPage) {
     return <>{children}</>;
