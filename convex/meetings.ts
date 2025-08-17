@@ -321,28 +321,34 @@ export const joinMeeting = mutation({
     }
 
     // Check if meeting is accessible
+    const now = Date.now();
+    const isHostOrCoHost = meeting.hostId === user._id || meeting.coHosts.includes(user._id);
+    
+    // Check if meeting duration has elapsed
+    if (now > meeting.scheduledEndTime) {
+      throw new Error("Meeting has ended. The scheduled duration has elapsed.");
+    }
+    
     // Allow joining if:
     // 1. Meeting is live
     // 2. User is the host or co-host
     // 3. Meeting is scheduled and within 15 minutes of start time
     if (meeting.status === "scheduled") {
-      const isHost = meeting.hostId === user._id || meeting.coHosts.includes(user._id);
-      const now = Date.now();
       const scheduledTime = meeting.scheduledStartTime;
       const timeUntilStart = scheduledTime - now;
       const canJoinEarly = timeUntilStart <= 15 * 60 * 1000; // 15 minutes early
       
-      if (!isHost && !canJoinEarly) {
+      if (!isHostOrCoHost && !canJoinEarly) {
         const minutesUntilStart = Math.ceil(timeUntilStart / 60000);
         throw new Error(`Meeting has not started yet. You can join ${minutesUntilStart} minutes before the scheduled time.`);
       }
       
       // Auto-start meeting if host is joining
-      if (isHost && meeting.status === "scheduled") {
+      if (isHostOrCoHost && meeting.status === "scheduled") {
         await ctx.db.patch(args.meetingId, {
           status: "live",
-          actualStartTime: Date.now(),
-          updatedAt: Date.now(),
+          actualStartTime: now,
+          updatedAt: now,
         });
       }
     }
@@ -453,32 +459,30 @@ export const leaveMeeting = mutation({
       });
     }
 
-    // Check if this was the host and no one else is in the meeting
-    if (meeting.hostId === user._id) {
-      const remainingParticipants = await ctx.db
-        .query("meetingParticipants")
-        .withIndex("by_meeting", (q) => q.eq("meetingId", args.meetingId))
-        .filter((q) => q.eq(q.field("leaveTime"), undefined))
-        .collect();
+    // Check if there are any remaining participants
+    const remainingParticipants = await ctx.db
+      .query("meetingParticipants")
+      .withIndex("by_meeting", (q) => q.eq("meetingId", args.meetingId))
+      .filter((q) => q.eq(q.field("leaveTime"), undefined))
+      .collect();
 
-      if (remainingParticipants.length === 0) {
-        // End the meeting if host leaves and no one else is there
-        await ctx.db.patch(args.meetingId, {
-          status: "ended",
-          actualEndTime: Date.now(),
-          updatedAt: Date.now(),
-        });
-      }
-    }
+    // Return info about room occupancy for smart LiveKit management
+    const roomIsEmpty = remainingParticipants.length === 0;
+    const meetingIsWithinSchedule = Date.now() >= meeting.scheduledStartTime && Date.now() <= meeting.scheduledEndTime;
 
-    return { success: true };
+    return { 
+      success: true, 
+      roomIsEmpty,
+      meetingIsWithinSchedule,
+      roomName: meeting.roomName
+    };
   },
 });
 
 /**
- * End a meeting (host only)
+ * End current session (host only) - kicks everyone out but allows rejoining during scheduled time
  */
-export const endMeeting = mutation({
+export const endCurrentSession = mutation({
   args: {
     meetingId: v.id("meetings"),
   },
@@ -494,10 +498,18 @@ export const endMeeting = mutation({
 
     // Check if user is host
     if (meeting.hostId !== user._id && !meeting.coHosts.includes(user._id)) {
-      throw new Error("Only hosts can end the meeting");
+      throw new Error("Only hosts can end the current session");
     }
 
-    // End all participant sessions
+    // Check if meeting is within scheduled time
+    const now = Date.now();
+    const withinSchedule = now >= meeting.scheduledStartTime && now <= meeting.scheduledEndTime;
+    
+    if (!withinSchedule) {
+      throw new Error("Cannot end session - meeting is outside scheduled time");
+    }
+
+    // End all current participant sessions
     const participants = await ctx.db
       .query("meetingParticipants")
       .withIndex("by_meeting", (q) => q.eq("meetingId", args.meetingId))
@@ -512,13 +524,66 @@ export const endMeeting = mutation({
       });
     }
 
+    // Meeting stays "live" - participants can rejoin during scheduled time
+    // Only update the updatedAt timestamp
     await ctx.db.patch(args.meetingId, {
-      status: "ended",
-      actualEndTime: Date.now(),
       updatedAt: Date.now(),
     });
 
-    return { success: true };
+    return { 
+      success: true, 
+      roomName: meeting.roomName,
+      message: "Current session ended - participants can rejoin during scheduled time"
+    };
+  },
+});
+
+/**
+ * Check if meeting should be automatically ended (called by scheduled function)
+ */
+export const checkMeetingDuration = mutation({
+  args: {
+    meetingId: v.id("meetings"),
+  },
+  handler: async (ctx, args) => {
+    const meeting = await ctx.db.get(args.meetingId);
+    if (!meeting) return { success: false, error: "Meeting not found" };
+
+    const now = Date.now();
+    
+    // If meeting scheduled time has passed and it's still live, end it
+    if (now > meeting.scheduledEndTime && meeting.status === "live") {
+      // End all active participant sessions
+      const participants = await ctx.db
+        .query("meetingParticipants")
+        .withIndex("by_meeting", (q) => q.eq("meetingId", args.meetingId))
+        .filter((q) => q.eq(q.field("leaveTime"), undefined))
+        .collect();
+
+      for (const participant of participants) {
+        const duration = now - participant.joinTime;
+        await ctx.db.patch(participant._id, {
+          leaveTime: now,
+          duration,
+        });
+      }
+
+      // Mark meeting as ended
+      await ctx.db.patch(args.meetingId, {
+        status: "ended",
+        actualEndTime: now,
+        updatedAt: now,
+      });
+
+      return { 
+        success: true, 
+        ended: true, 
+        roomName: meeting.roomName,
+        message: "Meeting ended - scheduled duration elapsed"
+      };
+    }
+
+    return { success: true, ended: false };
   },
 });
 

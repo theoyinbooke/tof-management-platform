@@ -71,3 +71,31 @@ body:has(.lk-room-container) {
   z-index: 9999 !important;
   position: relative !important;
 }
+
+/* Allow video grid to use full available space */
+.video-grid,
+[class*="video-grid"] {
+  height: 100% !important;
+  max-height: 100% !important;
+  overflow: hidden !important;
+}
+
+/* Ensure video tiles fit responsively within grid */
+.video-grid > div,
+[class*="video-grid"] > div {
+  height: 100% !important;
+  max-height: 100% !important;
+  min-height: 0 !important;
+  aspect-ratio: 16/9;
+  border-radius: 8px;
+}
+
+/* Target LiveKit containers to allow flexible sizing */
+.lk-room-container,
+.lk-video-conference,
+.lk-grid-layout-container,
+.lk-focus-layout-container {
+  height: 100% !important;
+  max-height: 100% !important;
+  overflow: hidden !important;
+}
