@@ -20,6 +20,7 @@ import { getInitials, formatDate } from "@/lib/utils";
 import { useTheme } from "next-themes";
 import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
+import { Id } from "../../../convex/_generated/dataModel";
 
 export function Header() {
   const pathname = usePathname();
@@ -27,10 +28,33 @@ export function Header() {
   const { theme, setTheme } = useTheme();
   const [searchQuery, setSearchQuery] = useState("");
 
+  // Extract meeting ID from pathname if it's a meeting room
+  const getMeetingIdFromPath = () => {
+    const segments = pathname.split("/").filter(Boolean);
+    if (segments[0] === "meetings" && segments[1] && segments[2] === "room") {
+      return segments[1] as Id<"meetings">;
+    }
+    return null;
+  };
+
+  const meetingId = getMeetingIdFromPath();
+  
+  // Temporarily disable meeting query until Convex access is resolved
+  const meeting = null;
+
   // Get page title based on pathname
   const getPageTitle = () => {
     const segments = pathname.split("/").filter(Boolean);
     if (segments.length === 0) return "Dashboard";
+    
+    // Special handling for meeting rooms
+    if (segments[0] === "meetings" && segments[1] && segments[2] === "room") {
+      if (meeting) {
+        return `Meetings > ${meeting.title}`;
+      } else {
+        return "Meetings > Meeting Room";
+      }
+    }
     
     // Capitalize first letter of each segment
     return segments

@@ -417,181 +417,172 @@ export default function SupportConfigurationPage() {
   const activeCount = supportConfigs.filter(c => c.isActive).length;
 
   return (
-    <div className="flex h-screen bg-gray-50">
-      {/* Left Sidebar - Support List */}
-      <div className="w-80 bg-white border-r flex flex-col">
-        {/* Sidebar Header */}
-        <div className="p-4 border-b">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-lg font-semibold">Support Types</h2>
-            <Button 
-              size="sm"
-              onClick={() => setShowAddModal(true)}
-              className="bg-emerald-600 hover:bg-emerald-700"
-            >
-              <Plus className="w-4 h-4" />
-            </Button>
-          </div>
-          
-          {/* Search Box */}
-          <div className="mb-3">
-            <Input
-              type="search"
-              placeholder="Search support types..."
-              className="w-full"
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-          </div>
-          
-          {/* Quick Stats */}
-          <div className="grid grid-cols-2 gap-2">
-            <div className="bg-gray-50 rounded-lg p-2">
-              <p className="text-xs text-gray-600">Active</p>
-              <p className="text-lg font-bold text-gray-900">{activeCount}</p>
+    <>
+      <div className="flex h-[calc(100vh-120px)] -m-6">
+        {/* Left Container - Support List - STATIC/STICKY */}
+        <div className="w-80 bg-white border-r flex flex-col flex-shrink-0 sticky top-0 h-full overflow-hidden">
+          {/* Sidebar Header - Fixed */}
+          <div className="p-4 border-b bg-white">
+            <div className="flex items-center justify-between mb-3">
+              <h2 className="text-lg font-semibold">Support Types</h2>
+              <Button 
+                size="sm"
+                onClick={() => setShowAddModal(true)}
+                className="bg-emerald-600 hover:bg-emerald-700"
+              >
+                <Plus className="w-4 h-4" />
+              </Button>
             </div>
-            <div className="bg-gray-50 rounded-lg p-2">
-              <p className="text-xs text-gray-600">Total</p>
-              <p className="text-lg font-bold text-gray-900">{supportConfigs.length}</p>
+            
+            {/* Search Box */}
+            <div className="mb-3">
+              <Input
+                type="search"
+                placeholder="Search support types..."
+                className="w-full"
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
+            </div>
+            
+            {/* Quick Stats */}
+            <div className="grid grid-cols-2 gap-2">
+              <div className="bg-gray-50 rounded-lg p-2">
+                <p className="text-xs text-gray-600">Active</p>
+                <p className="text-lg font-bold text-gray-900">{activeCount}</p>
+              </div>
+              <div className="bg-gray-50 rounded-lg p-2">
+                <p className="text-xs text-gray-600">Total</p>
+                <p className="text-lg font-bold text-gray-900">{supportConfigs.length}</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Support List - Scrollable within sidebar */}
+          <div className="flex-1 overflow-y-auto">
+            <div className="p-2">
+              {supportConfigs
+                .filter(config => 
+                  config.displayName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                  config.supportType.toLowerCase().includes(searchQuery.toLowerCase())
+                )
+                .map((config) => {
+                const Icon = getIconComponent(config.icon);
+                const isSelected = selectedConfig?._id === config._id;
+                
+                return (
+                  <button
+                    key={config._id}
+                    onClick={() => {
+                      setSelectedConfig(config);
+                      setActiveTab("overview");
+                    }}
+                    className={cn(
+                      "w-full text-left p-3 rounded-lg mb-2 transition-all",
+                      isSelected 
+                        ? "bg-emerald-50 border border-emerald-200" 
+                        : "hover:bg-gray-50 border border-transparent"
+                    )}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className={cn(
+                        "w-10 h-10 rounded-lg flex items-center justify-center",
+                        config.color === "emerald" ? "bg-emerald-100 text-emerald-600" :
+                        config.color === "blue" ? "bg-blue-100 text-blue-600" :
+                        config.color === "purple" ? "bg-purple-100 text-purple-600" :
+                        config.color === "orange" ? "bg-orange-100 text-orange-600" :
+                        config.color === "red" ? "bg-red-100 text-red-600" :
+                        config.color === "teal" ? "bg-teal-100 text-teal-600" :
+                        "bg-gray-100 text-gray-600"
+                      )}>
+                        <Icon className="w-5 h-5" />
+                      </div>
+                      
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <h3 className="font-medium text-sm text-gray-900 truncate">
+                            {config.displayName}
+                          </h3>
+                          {config.isActive ? (
+                            <div className="w-2 h-2 bg-green-500 rounded-full" />
+                          ) : (
+                            <div className="w-2 h-2 bg-gray-300 rounded-full" />
+                          )}
+                        </div>
+                        <p className="text-xs text-gray-500 truncate mt-1">
+                          {config.amountConfig.length} levels configured
+                        </p>
+                      </div>
+                      
+                      {isSelected && (
+                        <ChevronRight className="w-4 h-4 text-emerald-600 mt-1" />
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           </div>
         </div>
 
-        {/* Support List */}
-        <ScrollArea className="flex-1 no-scrollbar">
-          <div className="p-2">
-            {supportConfigs
-              .filter(config => 
-                config.displayName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                config.supportType.toLowerCase().includes(searchQuery.toLowerCase())
-              )
-              .map((config) => {
-              const Icon = getIconComponent(config.icon);
-              const isSelected = selectedConfig?._id === config._id;
-              
-              return (
-                <button
-                  key={config._id}
-                  onClick={() => {
-                    setSelectedConfig(config);
-                    setActiveTab("overview");
-                  }}
-                  className={cn(
-                    "w-full text-left p-3 rounded-lg mb-2 transition-all",
-                    isSelected 
-                      ? "bg-emerald-50 border border-emerald-200" 
-                      : "hover:bg-gray-50 border border-transparent"
-                  )}
-                >
-                  <div className="flex items-start gap-3">
-                    <div className={cn(
-                      "w-10 h-10 rounded-lg flex items-center justify-center",
-                      config.color === "emerald" ? "bg-emerald-100 text-emerald-600" :
-                      config.color === "blue" ? "bg-blue-100 text-blue-600" :
-                      config.color === "purple" ? "bg-purple-100 text-purple-600" :
-                      config.color === "orange" ? "bg-orange-100 text-orange-600" :
-                      config.color === "red" ? "bg-red-100 text-red-600" :
-                      config.color === "teal" ? "bg-teal-100 text-teal-600" :
-                      "bg-gray-100 text-gray-600"
-                    )}>
-                      <Icon className="w-5 h-5" />
+        {/* Right Container - Dashboard and Tabs - SCROLLABLE */}
+        <div className="flex-1 bg-gray-50 overflow-y-auto">
+          <div className="p-6 space-y-6">
+          {/* Stats Dashboard Card */}
+          <Card className="bg-white rounded-lg shadow-sm border">
+            <CardContent className="p-4">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="bg-gradient-to-r from-emerald-50 to-emerald-100 rounded-lg p-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-emerald-700">Active Types</p>
+                      <p className="text-2xl font-bold text-emerald-900">{activeCount}</p>
                     </div>
-                    
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <h3 className="font-medium text-sm text-gray-900 truncate">
-                          {config.displayName}
-                        </h3>
-                        {config.isActive ? (
-                          <div className="w-2 h-2 bg-green-500 rounded-full" />
-                        ) : (
-                          <div className="w-2 h-2 bg-gray-300 rounded-full" />
-                        )}
-                      </div>
-                      <p className="text-xs text-gray-500 truncate mt-1">
-                        {config.amountConfig.length} levels configured
+                    <Settings className="w-6 h-6 text-emerald-600" />
+                  </div>
+                </div>
+                <div className="bg-gradient-to-r from-blue-50 to-blue-100 rounded-lg p-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-blue-700">Total Budget</p>
+                      <p className="text-xl font-bold text-blue-900">{formatCurrency(totalBudget, "NGN")}</p>
+                    </div>
+                    <DollarSign className="w-6 h-6 text-blue-600" />
+                  </div>
+                </div>
+                <div className="bg-gradient-to-r from-purple-50 to-purple-100 rounded-lg p-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-purple-700">Config Count</p>
+                      <p className="text-2xl font-bold text-purple-900">{supportConfigs.length}</p>
+                    </div>
+                    <FileText className="w-6 h-6 text-purple-600" />
+                  </div>
+                </div>
+                <div className="bg-gradient-to-r from-orange-50 to-orange-100 rounded-lg p-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm text-orange-700">Avg Processing</p>
+                      <p className="text-2xl font-bold text-orange-900">
+                        {Math.round(supportConfigs.reduce((sum, c) => sum + c.applicationSettings.processingDays, 0) / supportConfigs.length)}d
                       </p>
                     </div>
-                    
-                    {isSelected && (
-                      <ChevronRight className="w-4 h-4 text-emerald-600 mt-1" />
-                    )}
+                    <Clock className="w-6 h-6 text-orange-600" />
                   </div>
-                </button>
-              );
-            })}
-          </div>
-        </ScrollArea>
-      </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
 
-      {/* Right Panel - Details View */}
-      <div className="flex-1 flex flex-col">
-        {/* Stats Dashboard - Moved to top */}
-        <div className="bg-white border-b p-6">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-            <Card className="bg-gradient-to-r from-emerald-50 to-emerald-100">
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-emerald-700">Active Types</p>
-                    <p className="text-2xl font-bold text-emerald-900">{activeCount}</p>
-                  </div>
-                  <Settings className="w-8 h-8 text-emerald-600" />
+          {/* Content Area Card */}
+          {selectedConfig ? (
+            <Card className="bg-white rounded-lg shadow-sm border">
+              <CardHeader className="bg-gray-50 rounded-t-lg">
+                <div className="mb-4">
+                  <h1 className="text-2xl font-bold text-gray-900">Support Configuration</h1>
+                  <p className="text-gray-600 mt-1">
+                    Manage support types, eligibility rules, and budget configurations
+                  </p>
                 </div>
-              </CardContent>
-            </Card>
-            <Card className="bg-gradient-to-r from-blue-50 to-blue-100">
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-blue-700">Total Budget</p>
-                    <p className="text-xl font-bold text-blue-900">{formatCurrency(totalBudget, "NGN")}</p>
-                  </div>
-                  <DollarSign className="w-8 h-8 text-blue-600" />
-                </div>
-              </CardContent>
-            </Card>
-            <Card className="bg-gradient-to-r from-purple-50 to-purple-100">
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-purple-700">Config Count</p>
-                    <p className="text-2xl font-bold text-purple-900">{supportConfigs.length}</p>
-                  </div>
-                  <FileText className="w-8 h-8 text-purple-600" />
-                </div>
-              </CardContent>
-            </Card>
-            <Card className="bg-gradient-to-r from-orange-50 to-orange-100">
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-orange-700">Avg Processing</p>
-                    <p className="text-2xl font-bold text-orange-900">
-                      {Math.round(supportConfigs.reduce((sum, c) => sum + c.applicationSettings.processingDays, 0) / supportConfigs.length)}d
-                    </p>
-                  </div>
-                  <Clock className="w-8 h-8 text-orange-600" />
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-          
-          {/* Header */}
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">Support Configuration</h1>
-              <p className="text-gray-600 mt-1">
-                Manage support types, eligibility rules, and budget configurations
-              </p>
-            </div>
-          </div>
-        </div>
-
-        {/* Content Area */}
-        {selectedConfig ? (
-          <div className="flex-1 overflow-auto p-6 no-scrollbar">
-            <Card>
-              <CardHeader className="bg-gray-50">
                 <div className="flex justify-between items-start">
                   <div>
                     <CardTitle className="text-xl flex items-center gap-3">
@@ -635,8 +626,7 @@ export default function SupportConfigurationPage() {
                               <div>
                                 <p className="text-sm text-gray-600">Processing Time</p>
                                 <p className="text-2xl font-bold">
-                                  {editingTab === "settings" && editingSettings.processingDays ? 
-                                    editingSettings.processingDays : selectedConfig.applicationSettings.processingDays} days
+                                  {selectedConfig.applicationSettings.processingDays} days
                                 </p>
                               </div>
                               <Clock className="w-8 h-8 text-blue-500" />
@@ -684,7 +674,7 @@ export default function SupportConfigurationPage() {
                         <h3 className="font-semibold mb-3">Current Configuration Summary</h3>
                         <div className="grid grid-cols-2 gap-3">
                           <div className="flex items-center gap-2 p-3 bg-gray-50 rounded-lg">
-                            {(editingTab === "settings" ? editingSettings.requiresGuardianConsent : selectedConfig.applicationSettings.requiresGuardianConsent) ? (
+                            {selectedConfig.applicationSettings.requiresGuardianConsent ? (
                               <CheckCircle className="w-5 h-5 text-green-500" />
                             ) : (
                               <X className="w-5 h-5 text-gray-400" />
@@ -692,7 +682,7 @@ export default function SupportConfigurationPage() {
                             <span className="text-sm">Guardian Consent Required</span>
                           </div>
                           <div className="flex items-center gap-2 p-3 bg-gray-50 rounded-lg">
-                            {(editingTab === "settings" ? editingSettings.requiresAcademicVerification : selectedConfig.applicationSettings.requiresAcademicVerification) ? (
+                            {selectedConfig.applicationSettings.requiresAcademicVerification ? (
                               <CheckCircle className="w-5 h-5 text-green-500" />
                             ) : (
                               <X className="w-5 h-5 text-gray-400" />
@@ -700,7 +690,7 @@ export default function SupportConfigurationPage() {
                             <span className="text-sm">Academic Verification</span>
                           </div>
                           <div className="flex items-center gap-2 p-3 bg-gray-50 rounded-lg">
-                            {(editingTab === "settings" ? editingSettings.allowMultipleApplications : selectedConfig.applicationSettings.allowMultipleApplications) ? (
+                            {selectedConfig.applicationSettings.allowMultipleApplications ? (
                               <CheckCircle className="w-5 h-5 text-green-500" />
                             ) : (
                               <X className="w-5 h-5 text-gray-400" />
@@ -708,7 +698,7 @@ export default function SupportConfigurationPage() {
                             <span className="text-sm">Multiple Applications</span>
                           </div>
                           <div className="flex items-center gap-2 p-3 bg-gray-50 rounded-lg">
-                            {(editingTab === "eligibility" ? editingEligibility.minAttendance : selectedConfig.performanceRequirements?.minAttendance) ? (
+                            {selectedConfig.performanceRequirements?.minAttendance ? (
                               <CheckCircle className="w-5 h-5 text-green-500" />
                             ) : (
                               <X className="w-5 h-5 text-gray-400" />
@@ -718,46 +708,7 @@ export default function SupportConfigurationPage() {
                         </div>
                       </div>
 
-                      {/* Live Budget Summary */}
-                      <div>
-                        <h3 className="font-semibold mb-3">Budget Configuration</h3>
-                        <div className="space-y-2">
-                          {(editingCardIndex !== null ? editingAmounts : selectedConfig.amountConfig)
-                            .filter(a => a.isActive !== false)
-                            .map((amount, idx) => (
-                            <div key={idx} className="flex items-center justify-between p-2 bg-gray-50 rounded">
-                              <span className="text-sm capitalize">{amount.academicLevel}</span>
-                              <div className="flex items-center gap-2">
-                                <Badge variant="outline" className="text-xs">
-                                  {formatCurrency(amount.minAmount, amount.currency)} - {formatCurrency(amount.maxAmount, amount.currency)}
-                                </Badge>
-                                <Badge className="text-xs">{amount.frequency}</Badge>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
 
-                      {/* Live Documents Summary */}
-                      <div>
-                        <h3 className="font-semibold mb-3">Required Documents</h3>
-                        <div className="grid grid-cols-2 gap-2">
-                          {(editingDocCardIndex !== null ? editingDocuments : selectedConfig.requiredDocuments)
-                            .filter(d => d.isActive !== false)
-                            .map((doc, idx) => (
-                            <div key={idx} className="flex items-center gap-2 p-2 bg-gray-50 rounded">
-                              <FileText className={cn(
-                                "w-4 h-4",
-                                doc.isMandatory ? "text-red-500" : "text-yellow-500"
-                              )} />
-                              <span className="text-sm flex-1">{doc.displayName}</span>
-                              {doc.isMandatory && (
-                                <Badge variant="destructive" className="text-xs">Required</Badge>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
                     </TabsContent>
 
                     {/* Budget Tab */}
@@ -1703,20 +1654,23 @@ export default function SupportConfigurationPage() {
                 </Tabs>
               </CardContent>
             </Card>
+          ) : (
+            <Card className="bg-white rounded-lg shadow-sm border">
+              <CardContent className="flex items-center justify-center p-12">
+                <div className="text-center">
+                  <Settings className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                  <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                    Select a Support Configuration
+                  </h3>
+                  <p className="text-gray-600">
+                    Choose a support type from the list to view and manage its details
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
           </div>
-        ) : (
-          <div className="flex-1 flex items-center justify-center">
-            <div className="text-center">
-              <Settings className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                Select a Support Configuration
-              </h3>
-              <p className="text-gray-600">
-                Choose a support type from the list to view and manage its details
-              </p>
-            </div>
-          </div>
-        )}
+        </div>
       </div>
 
       {/* Add Support Modal */}
@@ -1724,12 +1678,19 @@ export default function SupportConfigurationPage() {
         <AddSupportModal
           foundationId={user.foundationId}
           onClose={() => setShowAddModal(false)}
-          onSuccess={() => {
+          onSuccess={(newSupportId) => {
             setShowAddModal(false);
-            // The query will automatically refresh with the new data
+            // If a new support ID is returned, select it automatically
+            if (newSupportId && supportConfigs) {
+              const newConfig = supportConfigs.find(config => config._id === newSupportId);
+              if (newConfig) {
+                setSelectedConfig(newConfig);
+                setActiveTab("overview");
+              }
+            }
           }}
         />
       )}
-    </div>
+    </>
   );
 }

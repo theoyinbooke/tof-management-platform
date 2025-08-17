@@ -833,6 +833,97 @@ export const createDefaultDocumentTypes = mutation({
 });
 
 /**
+ * Toggle foundation active status (super admin only)
+ */
+export const toggleStatus = mutation({
+  args: {
+    foundationId: v.id("foundations"),
+  },
+  handler: async (ctx, args) => {
+    const currentUser = await authenticateAndAuthorize(ctx, null, ["super_admin"]);
+    
+    const foundation = await ctx.db.get(args.foundationId);
+    if (!foundation) {
+      throw new Error("Foundation not found");
+    }
+    
+    const newStatus = !foundation.isActive;
+    
+    // Update foundation status
+    await ctx.db.patch(args.foundationId, {
+      isActive: newStatus,
+      updatedAt: Date.now(),
+    });
+    
+    // Create audit log
+    await ctx.db.insert("auditLogs", {
+      foundationId: args.foundationId,
+      userId: currentUser._id,
+      userEmail: currentUser.email,
+      userRole: currentUser.role,
+      action: newStatus ? "foundation_activated" : "foundation_deactivated",
+      entityType: "foundations",
+      entityId: args.foundationId,
+      description: `Foundation ${newStatus ? "activated" : "deactivated"}: ${foundation.name}`,
+      riskLevel: "high",
+      createdAt: Date.now(),
+    });
+    
+    return { success: true, newStatus };
+  },
+});
+
+/**
+ * Delete foundation (super admin only - soft delete by deactivating)
+ */
+export const deleteFoundation = mutation({
+  args: {
+    foundationId: v.id("foundations"),
+  },
+  handler: async (ctx, args) => {
+    const currentUser = await authenticateAndAuthorize(ctx, null, ["super_admin"]);
+    
+    const foundation = await ctx.db.get(args.foundationId);
+    if (!foundation) {
+      throw new Error("Foundation not found");
+    }
+    
+    // Check if foundation has active beneficiaries
+    const beneficiaries = await ctx.db
+      .query("beneficiaries")
+      .withIndex("by_foundation", (q) => q.eq("foundationId", args.foundationId))
+      .filter((q) => q.eq(q.field("status"), "active"))
+      .collect();
+    
+    if (beneficiaries.length > 0) {
+      throw new Error(`Cannot delete foundation with ${beneficiaries.length} active beneficiaries`);
+    }
+    
+    // Soft delete by deactivating
+    await ctx.db.patch(args.foundationId, {
+      isActive: false,
+      updatedAt: Date.now(),
+    });
+    
+    // Create audit log
+    await ctx.db.insert("auditLogs", {
+      foundationId: args.foundationId,
+      userId: currentUser._id,
+      userEmail: currentUser.email,
+      userRole: currentUser.role,
+      action: "foundation_deleted",
+      entityType: "foundations",
+      entityId: args.foundationId,
+      description: `Foundation soft deleted: ${foundation.name}`,
+      riskLevel: "critical",
+      createdAt: Date.now(),
+    });
+    
+    return { success: true };
+  },
+});
+
+/**
  * Setup foundation with all default data
  */
 export const setupFoundationDefaults = mutation({

@@ -77,42 +77,46 @@ export function AdminDashboard() {
 
   const statCards = [
     {
-      title: "Total Beneficiaries",
-      value: dashboardStats.totalBeneficiaries,
-      subValue: `${dashboardStats.activeBeneficiaries} active`,
-      change: `+${dashboardStats.beneficiariesChange}%`,
+      title: "Beneficiaries",
+      value: dashboardStats.totalBeneficiaries.toLocaleString(),
+      subValue: `${dashboardStats.activeBeneficiaries.toLocaleString()} active • ${(100 - dashboardStats.activeBeneficiaries/dashboardStats.totalBeneficiaries*100).toFixed(0)}% inactive`,
+      change: dashboardStats.beneficiariesChange > 0 ? `${dashboardStats.beneficiariesChange}%` : dashboardStats.beneficiariesChange < 0 ? `${dashboardStats.beneficiariesChange}%` : "0%",
       trend: dashboardStats.beneficiariesChange > 0 ? "up" : dashboardStats.beneficiariesChange < 0 ? "down" : "neutral",
       icon: Users,
       color: "text-emerald-600",
       bgColor: "bg-emerald-50",
     },
     {
-      title: "Active Applications",
-      value: dashboardStats.pendingApplications,
-      subValue: `${dashboardStats.todaysApplications} new today`,
-      change: dashboardStats.todaysApplications > 0 ? `+${dashboardStats.todaysApplications}` : "No change",
+      title: "Applications",
+      value: dashboardStats.pendingApplications.toLocaleString(),
+      subValue: dashboardStats.todaysApplications > 0 
+        ? `${dashboardStats.todaysApplications} today • ${dashboardStats.underReviewApplications} reviewing`
+        : `${dashboardStats.underReviewApplications} under review`,
+      change: dashboardStats.todaysApplications > 0 ? `${dashboardStats.todaysApplications}` : "0",
       trend: dashboardStats.todaysApplications > 0 ? "up" : "neutral",
       icon: FileText,
       color: "text-sky-600",
       bgColor: "bg-sky-50",
     },
     {
-      title: "Monthly Disbursement",
-      value: formatCurrency(dashboardStats.monthlyDisbursement),
-      subValue: `${dashboardStats.pendingInvoices} pending invoices`,
+      title: "Disbursement",
+      value: formatCurrency(dashboardStats.monthlyDisbursement).replace('NGN', '₦'),
+      subValue: dashboardStats.pendingInvoices > 0 
+        ? `${dashboardStats.pendingInvoices} pending • ₦${(dashboardStats.monthlyDisbursement/dashboardStats.totalBeneficiaries).toFixed(0)}/student`
+        : `₦${(dashboardStats.monthlyDisbursement/Math.max(dashboardStats.totalBeneficiaries, 1)).toFixed(0)} per student`,
       change: dashboardStats.disbursementChange !== 0 
-        ? `${dashboardStats.disbursementChange > 0 ? '+' : ''}${dashboardStats.disbursementChange}%`
-        : "No change",
+        ? `${dashboardStats.disbursementChange}%`
+        : "0%",
       trend: dashboardStats.disbursementChange > 0 ? "up" : dashboardStats.disbursementChange < 0 ? "down" : "neutral",
       icon: DollarSign,
       color: "text-amber-600",
       bgColor: "bg-amber-50",
     },
     {
-      title: "Academic Performance",
+      title: "Performance",
       value: `${dashboardStats.averagePerformance}%`,
-      subValue: `Average score`,
-      change: `+${dashboardStats.performanceChange}%`,
+      subValue: `${Math.round(dashboardStats.averagePerformance/20)}★ avg • ${dashboardStats.totalBeneficiaries > 0 ? Math.round(dashboardStats.averagePerformance * dashboardStats.totalBeneficiaries / 100) : 0} excelling`,
+      change: `${dashboardStats.performanceChange}%`,
       trend: dashboardStats.performanceChange > 0 ? "up" : dashboardStats.performanceChange < 0 ? "down" : "neutral",
       icon: GraduationCap,
       color: "text-purple-600",
@@ -121,186 +125,242 @@ export function AdminDashboard() {
   ];
 
   return (
-    <div className="space-y-6">
-      {/* Welcome Section */}
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">
-          Welcome back, {user?.firstName}!
-        </h1>
-        <p className="text-gray-600 mt-1">
-          Here's what's happening with your foundation today.
-        </p>
+    <div className="space-y-4">
+      {/* Welcome Section - Compact */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-bold text-gray-900">
+            Welcome back, {user?.firstName}!
+          </h1>
+          <p className="text-sm text-gray-600 mt-0.5">
+            {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Badge variant="outline" className="text-xs">
+            {user?.role?.replace('_', ' ')}
+          </Badge>
+          {dashboardStats.pendingApplications > 0 && (
+            <Badge className="bg-amber-100 text-amber-700 text-xs">
+              {dashboardStats.pendingApplications} tasks pending
+            </Badge>
+          )}
+        </div>
       </div>
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      {/* Stats Grid - Compact & Beautiful */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {statCards.map((stat, index) => {
           const Icon = stat.icon;
           return (
-            <Card key={index} className="hover:shadow-lg transition-all duration-200 cursor-pointer border-gray-200">
-              <CardContent className="p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <div className={`p-3 rounded-lg ${stat.bgColor}`}>
-                    <Icon className={`h-6 w-6 ${stat.color}`} />
+            <Card 
+              key={index} 
+              className="group hover:shadow-xl hover:border-gray-300 transition-all duration-300 cursor-pointer border-gray-200 overflow-hidden relative"
+            >
+              <CardContent className="p-4">
+                {/* Background gradient effect */}
+                <div className={`absolute inset-0 ${stat.bgColor} opacity-5 group-hover:opacity-10 transition-opacity duration-300`} />
+                
+                {/* Top row with icon and trend */}
+                <div className="flex items-start justify-between mb-3 relative">
+                  <div className={`p-2 rounded-lg ${stat.bgColor} group-hover:scale-110 transition-transform duration-300`}>
+                    <Icon className={`h-4 w-4 ${stat.color}`} />
                   </div>
-                  {stat.trend === "up" && (
-                    <TrendingUp className="h-4 w-4 text-emerald-600" />
-                  )}
-                  {stat.trend === "down" && (
-                    <TrendingDown className="h-4 w-4 text-red-600" />
-                  )}
+                  <div className="flex items-center gap-1">
+                    {stat.trend === "up" && (
+                      <div className="flex items-center text-emerald-600">
+                        <TrendingUp className="h-3 w-3" />
+                        <span className="text-xs font-semibold ml-0.5">{stat.change}</span>
+                      </div>
+                    )}
+                    {stat.trend === "down" && (
+                      <div className="flex items-center text-red-600">
+                        <TrendingDown className="h-3 w-3" />
+                        <span className="text-xs font-semibold ml-0.5">{stat.change}</span>
+                      </div>
+                    )}
+                    {stat.trend === "neutral" && (
+                      <span className="text-xs text-gray-500 font-medium">{stat.change}</span>
+                    )}
+                  </div>
                 </div>
-                <h3 className="text-2xl font-bold text-gray-900">{stat.value}</h3>
-                <p className="text-sm text-gray-600 mt-1">{stat.title}</p>
-                <div className="mt-2 space-y-1">
-                  <p className="text-xs text-gray-500">{stat.subValue}</p>
-                  <p className="text-xs font-medium text-gray-700">{stat.change}</p>
+                
+                {/* Main value - Very large and prominent */}
+                <div className="mb-2">
+                  <h3 className="text-3xl font-bold text-gray-900 tracking-tight leading-none group-hover:scale-105 transition-transform duration-300 origin-left">
+                    {stat.value}
+                  </h3>
                 </div>
+                
+                {/* Title and sub-value */}
+                <div>
+                  <p className="text-xs font-medium text-gray-600 uppercase tracking-wider mb-1">
+                    {stat.title}
+                  </p>
+                  <p className="text-xs text-gray-500">
+                    {stat.subValue}
+                  </p>
+                </div>
+                
+                {/* Subtle bottom border accent on hover */}
+                <div className={`absolute bottom-0 left-0 right-0 h-0.5 ${stat.color.replace('text', 'bg')} transform scale-x-0 group-hover:scale-x-100 transition-transform duration-300`} />
               </CardContent>
             </Card>
           );
         })}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Recent Applications */}
-        <Card className="lg:col-span-2 border-gray-200">
-          <CardHeader>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        {/* Recent Applications - Compact Design */}
+        <Card className="lg:col-span-2 border-gray-200 hover:shadow-lg transition-all duration-300">
+          <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
-              <div>
-                <CardTitle>Recent Applications</CardTitle>
-                <CardDescription>Applications requiring review</CardDescription>
+              <div className="flex items-center gap-2">
+                <CardTitle className="text-base">Recent Applications</CardTitle>
+                {dashboardStats.pendingApplications > 0 && (
+                  <Badge className="bg-amber-100 text-amber-700 text-xs">
+                    {dashboardStats.pendingApplications} pending
+                  </Badge>
+                )}
               </div>
               <Button 
-                variant="outline" 
+                variant="ghost" 
                 size="sm"
                 onClick={handleViewAllApplications}
-                className="hover:bg-gray-50"
+                className="h-7 text-xs hover:bg-gray-50"
               >
                 View All
-                <ArrowRight className="ml-2 h-4 w-4" />
+                <ArrowRight className="ml-1 h-3 w-3" />
               </Button>
             </div>
           </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
+          <CardContent className="pt-0">
+            <div className="space-y-2">
               {dashboardStats.recentApplications?.length > 0 ? (
                 dashboardStats.recentApplications.map((application) => (
                   <div 
                     key={application._id} 
-                    className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
+                    className="group flex items-center justify-between p-3 rounded-lg hover:bg-gray-50 transition-all duration-200 cursor-pointer border border-transparent hover:border-gray-200"
                     onClick={() => router.push(`/applications/${application._id}`)}
                   >
-                    <div className="flex items-center gap-4">
-                      <div className="h-10 w-10 bg-emerald-100 rounded-full flex items-center justify-center">
-                        <FileText className="h-5 w-5 text-emerald-600" />
+                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                      <div className="h-8 w-8 bg-gradient-to-br from-emerald-100 to-emerald-50 rounded-full flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform duration-200">
+                        <FileText className="h-4 w-4 text-emerald-600" />
                       </div>
-                      <div>
-                        <p className="font-medium text-gray-900">
-                          {application.firstName} {application.lastName}
-                        </p>
-                        <p className="text-sm text-gray-600">
-                          {application.academicLevel} • Applied {formatDate(new Date(application.createdAt))}
-                        </p>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="font-semibold text-sm text-gray-900 truncate">
+                            {application.firstName} {application.lastName}
+                          </p>
+                          <Badge 
+                            variant="outline" 
+                            className={`text-xs px-1.5 py-0 ${
+                              application.status === "pending" ? "text-amber-600 border-amber-300 bg-amber-50" :
+                              application.status === "under_review" ? "text-sky-600 border-sky-300 bg-sky-50" :
+                              application.status === "approved" ? "text-emerald-600 border-emerald-300 bg-emerald-50" :
+                              "text-red-600 border-red-300 bg-red-50"
+                            }`}
+                          >
+                            {application.status === "pending" && <Clock className="mr-0.5 h-2.5 w-2.5" />}
+                            {application.status === "under_review" && <UserCheck className="mr-0.5 h-2.5 w-2.5" />}
+                            {application.status === "approved" && <CheckCircle className="mr-0.5 h-2.5 w-2.5" />}
+                            {application.status === "rejected" && <XCircle className="mr-0.5 h-2.5 w-2.5" />}
+                            {application.status.replace("_", " ")}
+                          </Badge>
+                        </div>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <p className="text-xs text-gray-500">
+                            {application.academicLevel}
+                          </p>
+                          <span className="text-xs text-gray-400">•</span>
+                          <p className="text-xs text-gray-500">
+                            {formatDate(new Date(application.createdAt))}
+                          </p>
+                        </div>
                       </div>
                     </div>
-                    <div className="flex items-center gap-3">
-                      <Badge 
-                        variant="outline" 
-                        className={
-                          application.status === "pending" ? "text-amber-600 border-amber-300" :
-                          application.status === "under_review" ? "text-sky-600 border-sky-300" :
-                          application.status === "approved" ? "text-emerald-600 border-emerald-300" :
-                          "text-red-600 border-red-300"
-                        }
-                      >
-                        {application.status === "pending" && <Clock className="mr-1 h-3 w-3" />}
-                        {application.status === "under_review" && <UserCheck className="mr-1 h-3 w-3" />}
-                        {application.status === "approved" && <CheckCircle className="mr-1 h-3 w-3" />}
-                        {application.status === "rejected" && <XCircle className="mr-1 h-3 w-3" />}
-                        {application.status.replace("_", " ")}
-                      </Badge>
-                      <Button 
-                        size="sm"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          router.push(`/reviews?applicationId=${application._id}`);
-                        }}
-                      >
-                        Review
-                      </Button>
-                    </div>
+                    <Button 
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 px-3 text-xs opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        router.push(`/reviews?applicationId=${application._id}`);
+                      }}
+                    >
+                      Review
+                      <ArrowRight className="ml-1 h-3 w-3" />
+                    </Button>
                   </div>
                 ))
               ) : (
-                <div className="text-center py-8 text-gray-500">
-                  <FileText className="h-12 w-12 mx-auto mb-3 text-gray-300" />
-                  <p>No recent applications</p>
+                <div className="text-center py-6 text-gray-500">
+                  <FileText className="h-8 w-8 mx-auto mb-2 text-gray-300" />
+                  <p className="text-sm">No recent applications</p>
                 </div>
               )}
             </div>
           </CardContent>
         </Card>
 
-        {/* Quick Actions */}
-        <Card className="border-gray-200">
-          <CardHeader>
-            <CardTitle>Quick Actions</CardTitle>
-            <CardDescription>Common tasks and shortcuts</CardDescription>
+        {/* Quick Actions - Compact */}
+        <Card className="border-gray-200 hover:shadow-lg transition-all duration-300">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Quick Actions</CardTitle>
           </CardHeader>
-          <CardContent className="space-y-3">
+          <CardContent className="pt-0 space-y-2">
             <Button 
-              className="w-full justify-start bg-white hover:bg-gray-50 text-gray-700 border border-gray-200" 
+              className="w-full justify-start h-9 text-sm bg-white hover:bg-emerald-50 text-gray-700 border border-gray-200 hover:border-emerald-300 transition-colors group" 
               variant="outline"
               onClick={handleReviewApplications}
             >
-              <UserCheck className="mr-2 h-4 w-4 text-emerald-600" />
+              <UserCheck className="mr-2 h-3.5 w-3.5 text-emerald-600 group-hover:scale-110 transition-transform" />
               Review Applications
               {dashboardStats.pendingApplications > 0 && (
-                <Badge className="ml-auto bg-emerald-100 text-emerald-700" variant="secondary">
+                <Badge className="ml-auto bg-emerald-100 text-emerald-700 text-xs px-1.5 py-0" variant="secondary">
                   {dashboardStats.pendingApplications}
                 </Badge>
               )}
             </Button>
             
             <Button 
-              className="w-full justify-start bg-white hover:bg-gray-50 text-gray-700 border border-gray-200" 
+              className="w-full justify-start h-9 text-sm bg-white hover:bg-sky-50 text-gray-700 border border-gray-200 hover:border-sky-300 transition-colors group" 
               variant="outline"
               onClick={handleAddBeneficiary}
             >
-              <Plus className="mr-2 h-4 w-4 text-sky-600" />
+              <Plus className="mr-2 h-3.5 w-3.5 text-sky-600 group-hover:scale-110 transition-transform" />
               Add Beneficiary
             </Button>
             
             <Button 
-              className="w-full justify-start bg-white hover:bg-gray-50 text-gray-700 border border-gray-200" 
+              className="w-full justify-start h-9 text-sm bg-white hover:bg-amber-50 text-gray-700 border border-gray-200 hover:border-amber-300 transition-colors group" 
               variant="outline"
               onClick={handleProcessPayment}
             >
-              <CreditCard className="mr-2 h-4 w-4 text-amber-600" />
+              <CreditCard className="mr-2 h-3.5 w-3.5 text-amber-600 group-hover:scale-110 transition-transform" />
               Process Payment
               {dashboardStats.pendingInvoices > 0 && (
-                <Badge className="ml-auto bg-amber-100 text-amber-700" variant="secondary">
+                <Badge className="ml-auto bg-amber-100 text-amber-700 text-xs px-1.5 py-0" variant="secondary">
                   {dashboardStats.pendingInvoices}
                 </Badge>
               )}
             </Button>
             
             <Button 
-              className="w-full justify-start bg-white hover:bg-gray-50 text-gray-700 border border-gray-200" 
+              className="w-full justify-start h-9 text-sm bg-white hover:bg-purple-50 text-gray-700 border border-gray-200 hover:border-purple-300 transition-colors group" 
               variant="outline"
               onClick={handleScheduleProgram}
             >
-              <CalendarDays className="mr-2 h-4 w-4 text-purple-600" />
+              <CalendarDays className="mr-2 h-3.5 w-3.5 text-purple-600 group-hover:scale-110 transition-transform" />
               Schedule Program
             </Button>
             
             <Button 
-              className="w-full justify-start bg-white hover:bg-gray-50 text-gray-700 border border-gray-200" 
+              className="w-full justify-start h-9 text-sm bg-white hover:bg-indigo-50 text-gray-700 border border-gray-200 hover:border-indigo-300 transition-colors group" 
               variant="outline"
               onClick={handleGenerateReport}
             >
-              <FileBarChart className="mr-2 h-4 w-4 text-indigo-600" />
+              <FileBarChart className="mr-2 h-3.5 w-3.5 text-indigo-600 group-hover:scale-110 transition-transform" />
               Generate Report
             </Button>
           </CardContent>
@@ -308,71 +368,107 @@ export function AdminDashboard() {
       </div>
 
       {/* Performance Metrics */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card className="border-gray-200">
-          <CardHeader>
-            <CardTitle>Application Status</CardTitle>
-            <CardDescription>Current session applications breakdown</CardDescription>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <Card className="border-gray-200 hover:shadow-lg transition-all duration-300">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base">Application Pipeline</CardTitle>
+              <Badge variant="outline" className="text-xs">
+                {dashboardStats.totalApplications} total
+              </Badge>
+            </div>
           </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <CheckCircle className="h-5 w-5 text-emerald-600" />
+          <CardContent className="pt-0">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between group hover:bg-emerald-50 p-2 rounded-lg transition-colors">
+                <div className="flex items-center gap-2">
+                  <CheckCircle className="h-4 w-4 text-emerald-600" />
                   <span className="text-sm font-medium">Approved</span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-2xl font-bold text-gray-900">
-                    {dashboardStats.approvedApplications}
-                  </span>
-                  <span className="text-sm text-gray-500">
-                    ({Math.round((dashboardStats.approvedApplications / Math.max(dashboardStats.totalApplications, 1)) * 100)}%)
-                  </span>
+                <div className="flex items-center gap-3">
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-xl font-bold text-gray-900">
+                      {dashboardStats.approvedApplications}
+                    </span>
+                    <span className="text-xs text-gray-500">
+                      {Math.round((dashboardStats.approvedApplications / Math.max(dashboardStats.totalApplications, 1)) * 100)}%
+                    </span>
+                  </div>
+                  <div className="w-24 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-emerald-600 rounded-full transition-all duration-500"
+                      style={{ width: `${(dashboardStats.approvedApplications / Math.max(dashboardStats.totalApplications, 1)) * 100}%` }}
+                    />
+                  </div>
                 </div>
               </div>
               
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <Clock className="h-5 w-5 text-amber-600" />
+              <div className="flex items-center justify-between group hover:bg-amber-50 p-2 rounded-lg transition-colors">
+                <div className="flex items-center gap-2">
+                  <Clock className="h-4 w-4 text-amber-600" />
                   <span className="text-sm font-medium">Pending</span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-2xl font-bold text-gray-900">
-                    {dashboardStats.pendingApplications}
-                  </span>
-                  <span className="text-sm text-gray-500">
-                    ({Math.round((dashboardStats.pendingApplications / Math.max(dashboardStats.totalApplications, 1)) * 100)}%)
-                  </span>
+                <div className="flex items-center gap-3">
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-xl font-bold text-gray-900">
+                      {dashboardStats.pendingApplications}
+                    </span>
+                    <span className="text-xs text-gray-500">
+                      {Math.round((dashboardStats.pendingApplications / Math.max(dashboardStats.totalApplications, 1)) * 100)}%
+                    </span>
+                  </div>
+                  <div className="w-24 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-amber-600 rounded-full transition-all duration-500"
+                      style={{ width: `${(dashboardStats.pendingApplications / Math.max(dashboardStats.totalApplications, 1)) * 100}%` }}
+                    />
+                  </div>
                 </div>
               </div>
               
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <UserCheck className="h-5 w-5 text-sky-600" />
-                  <span className="text-sm font-medium">Under Review</span>
-                </div>
+              <div className="flex items-center justify-between group hover:bg-sky-50 p-2 rounded-lg transition-colors">
                 <div className="flex items-center gap-2">
-                  <span className="text-2xl font-bold text-gray-900">
-                    {dashboardStats.underReviewApplications}
-                  </span>
-                  <span className="text-sm text-gray-500">
-                    ({Math.round((dashboardStats.underReviewApplications / Math.max(dashboardStats.totalApplications, 1)) * 100)}%)
-                  </span>
+                  <UserCheck className="h-4 w-4 text-sky-600" />
+                  <span className="text-sm font-medium">Reviewing</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-xl font-bold text-gray-900">
+                      {dashboardStats.underReviewApplications}
+                    </span>
+                    <span className="text-xs text-gray-500">
+                      {Math.round((dashboardStats.underReviewApplications / Math.max(dashboardStats.totalApplications, 1)) * 100)}%
+                    </span>
+                  </div>
+                  <div className="w-24 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-sky-600 rounded-full transition-all duration-500"
+                      style={{ width: `${(dashboardStats.underReviewApplications / Math.max(dashboardStats.totalApplications, 1)) * 100}%` }}
+                    />
+                  </div>
                 </div>
               </div>
               
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <XCircle className="h-5 w-5 text-red-600" />
+              <div className="flex items-center justify-between group hover:bg-red-50 p-2 rounded-lg transition-colors">
+                <div className="flex items-center gap-2">
+                  <XCircle className="h-4 w-4 text-red-600" />
                   <span className="text-sm font-medium">Rejected</span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-2xl font-bold text-gray-900">
-                    {dashboardStats.rejectedApplications}
-                  </span>
-                  <span className="text-sm text-gray-500">
-                    ({Math.round((dashboardStats.rejectedApplications / Math.max(dashboardStats.totalApplications, 1)) * 100)}%)
-                  </span>
+                <div className="flex items-center gap-3">
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-xl font-bold text-gray-900">
+                      {dashboardStats.rejectedApplications}
+                    </span>
+                    <span className="text-xs text-gray-500">
+                      {Math.round((dashboardStats.rejectedApplications / Math.max(dashboardStats.totalApplications, 1)) * 100)}%
+                    </span>
+                  </div>
+                  <div className="w-24 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-red-600 rounded-full transition-all duration-500"
+                      style={{ width: `${(dashboardStats.rejectedApplications / Math.max(dashboardStats.totalApplications, 1)) * 100}%` }}
+                    />
+                  </div>
                 </div>
               </div>
             </div>
@@ -380,36 +476,56 @@ export function AdminDashboard() {
         </Card>
 
         {/* Recent Activity */}
-        <Card className="border-gray-200">
-          <CardHeader>
-            <CardTitle>Recent Activity</CardTitle>
-            <CardDescription>Latest system activities</CardDescription>
+        <Card className="border-gray-200 hover:shadow-lg transition-all duration-300">
+          <CardHeader className="pb-3">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base">Activity Feed</CardTitle>
+              <Button 
+                variant="ghost" 
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => router.push("/audit-logs")}
+              >
+                View All
+              </Button>
+            </div>
           </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
+          <CardContent className="pt-0">
+            <div className="space-y-2">
               {recentActivity && recentActivity.length > 0 ? (
                 recentActivity.map((activity) => (
-                  <div key={activity._id} className="flex items-start gap-3">
-                    <div className={`w-2 h-2 rounded-full mt-2 ${
-                      activity.riskLevel === "critical" ? "bg-red-500" :
-                      activity.riskLevel === "high" ? "bg-orange-500" :
-                      activity.riskLevel === "medium" ? "bg-yellow-500" :
-                      "bg-green-500"
-                    }`} />
+                  <div 
+                    key={activity._id} 
+                    className="group flex items-start gap-2 p-2 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer"
+                  >
+                    <div className="mt-1.5">
+                      <div className={`w-1.5 h-1.5 rounded-full ${
+                        activity.riskLevel === "critical" ? "bg-red-500" :
+                        activity.riskLevel === "high" ? "bg-orange-500" :
+                        activity.riskLevel === "medium" ? "bg-yellow-500" :
+                        "bg-green-500"
+                      } group-hover:scale-150 transition-transform duration-200`} />
+                    </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-900 truncate">
+                      <p className="text-sm font-medium text-gray-900 line-clamp-1">
                         {activity.description}
                       </p>
-                      <p className="text-xs text-gray-500">
-                        {activity.userEmail} • {formatDate(new Date(activity.createdAt))}
-                      </p>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <p className="text-xs text-gray-500 truncate max-w-[150px]">
+                          {activity.userEmail.split('@')[0]}
+                        </p>
+                        <span className="text-xs text-gray-400">•</span>
+                        <p className="text-xs text-gray-500">
+                          {formatDate(new Date(activity.createdAt))}
+                        </p>
+                      </div>
                     </div>
                   </div>
                 ))
               ) : (
-                <div className="text-center py-8 text-gray-500">
-                  <AlertCircle className="h-12 w-12 mx-auto mb-3 text-gray-300" />
-                  <p>No recent activity</p>
+                <div className="text-center py-6 text-gray-500">
+                  <AlertCircle className="h-8 w-8 mx-auto mb-2 text-gray-300" />
+                  <p className="text-sm">No recent activity</p>
                 </div>
               )}
             </div>
@@ -417,45 +533,57 @@ export function AdminDashboard() {
         </Card>
       </div>
 
-      {/* Upcoming Events */}
+      {/* Upcoming Events - Compact Grid */}
       {dashboardStats.upcomingEvents && dashboardStats.upcomingEvents.length > 0 && (
-        <Card className="border-gray-200">
-          <CardHeader>
+        <Card className="border-gray-200 hover:shadow-lg transition-all duration-300">
+          <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
-              <div>
-                <CardTitle>Upcoming Events</CardTitle>
-                <CardDescription>Scheduled programs and events</CardDescription>
+              <div className="flex items-center gap-2">
+                <CardTitle className="text-base">Upcoming Events</CardTitle>
+                <Badge className="bg-purple-100 text-purple-700 text-xs">
+                  {dashboardStats.upcomingEvents.length} scheduled
+                </Badge>
               </div>
               <Button 
-                variant="outline" 
+                variant="ghost" 
                 size="sm"
                 onClick={() => router.push("/programs")}
-                className="hover:bg-gray-50"
+                className="h-7 text-xs hover:bg-gray-50"
               >
                 View All
-                <ArrowRight className="ml-2 h-4 w-4" />
+                <ArrowRight className="ml-1 h-3 w-3" />
               </Button>
             </div>
           </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {dashboardStats.upcomingEvents.map((event) => (
+          <CardContent className="pt-0">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+              {dashboardStats.upcomingEvents.slice(0, 8).map((event) => (
                 <div 
                   key={event._id} 
-                  className="p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer"
+                  className="group p-3 border border-gray-200 rounded-lg hover:border-purple-300 hover:bg-purple-50 transition-all duration-200 cursor-pointer relative overflow-hidden"
                   onClick={() => router.push(`/programs/${event.programId}`)}
                 >
-                  <div className="flex items-start justify-between mb-2">
-                    <Calendar className="h-5 w-5 text-purple-600" />
-                    <Badge variant="outline" className="text-xs">
+                  <div className="absolute top-0 left-0 w-1 h-full bg-purple-600 transform scale-y-0 group-hover:scale-y-100 transition-transform duration-300 origin-top" />
+                  
+                  <div className="flex items-center justify-between mb-2">
+                    <Calendar className="h-3.5 w-3.5 text-purple-600 group-hover:scale-110 transition-transform" />
+                    <Badge variant="outline" className="text-xs px-1.5 py-0 border-purple-300 text-purple-700">
                       {event.type}
                     </Badge>
                   </div>
-                  <h4 className="font-medium text-gray-900 mb-1">{event.name}</h4>
-                  <p className="text-sm text-gray-600 mb-2">{event.description}</p>
-                  <p className="text-xs text-gray-500">
-                    {formatDate(new Date(event.startDate))}
+                  
+                  <h4 className="font-semibold text-sm text-gray-900 mb-1 line-clamp-1 group-hover:text-purple-900">
+                    {event.name}
+                  </h4>
+                  
+                  <p className="text-xs text-gray-600 mb-2 line-clamp-2 min-h-[2rem]">
+                    {event.description}
                   </p>
+                  
+                  <div className="flex items-center gap-1 text-xs text-gray-500">
+                    <Clock className="h-3 w-3" />
+                    <span>{formatDate(new Date(event.startDate))}</span>
+                  </div>
                 </div>
               ))}
             </div>

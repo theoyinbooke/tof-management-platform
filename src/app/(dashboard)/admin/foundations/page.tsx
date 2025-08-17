@@ -55,7 +55,7 @@ export default function AdminFoundationsPage() {
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
 
   // Fetch all foundations (super admin only)
-  const foundations = useQuery(api.foundations.list);
+  const foundations = useQuery(api.foundations.getAll);
 
   // Filter foundations
   const filteredFoundations = foundations?.filter(foundation => {
@@ -226,7 +226,11 @@ export default function AdminFoundationsPage() {
                 </thead>
                 <tbody>
                   {filteredFoundations?.map((foundation) => (
-                    <tr key={foundation._id} className="border-b hover:bg-gray-50">
+                    <tr 
+                      key={foundation._id} 
+                      className="border-b hover:bg-gray-50 cursor-pointer"
+                      onClick={() => router.push(`/admin/foundations/${foundation._id}`)}
+                    >
                       <td className="p-2">
                         <div>
                           <p className="font-medium">{foundation.name}</p>
@@ -293,50 +297,36 @@ export default function AdminFoundationsPage() {
                           )}
                         </div>
                       </td>
-                      <td className="p-2">
-                        <div className="flex items-center gap-2">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => router.push(`/admin/foundations/${foundation._id}`)}
-                          >
-                            <ArrowUpRight className="w-4 h-4" />
-                          </Button>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="sm">
-                                <MoreVertical className="w-4 h-4" />
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent align="end">
-                              <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                              <DropdownMenuSeparator />
-                              <DropdownMenuItem
-                                onClick={() => router.push(`/admin/foundations/${foundation._id}`)}
-                              >
-                                View Details
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                onClick={() => {
-                                  setSelectedFoundation(foundation);
-                                  setIsEditDialogOpen(true);
-                                }}
-                              >
-                                <Edit className="w-4 h-4 mr-2" />
-                                Edit Foundation
-                              </DropdownMenuItem>
-                              <DropdownMenuItem
-                                className="text-red-600"
-                                onClick={() => {
-                                  // Handle deactivation
-                                  toast.success("Foundation status updated");
-                                }}
-                              >
-                                {foundation.isActive ? "Deactivate" : "Activate"}
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                        </div>
+                      <td className="p-2" onClick={(e) => e.stopPropagation()}>
+                        <DropdownMenu>
+                          <DropdownMenuTrigger asChild>
+                            <Button variant="ghost" size="sm">
+                              <MoreVertical className="w-4 h-4" />
+                            </Button>
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem
+                              onClick={() => {
+                                setSelectedFoundation(foundation);
+                                setIsEditDialogOpen(true);
+                              }}
+                            >
+                              <Edit className="w-4 h-4 mr-2" />
+                              Edit Foundation
+                            </DropdownMenuItem>
+                            <DropdownMenuItem
+                              className="text-red-600"
+                              onClick={() => {
+                                // Handle deactivation
+                                toast.success("Foundation status updated");
+                              }}
+                            >
+                              {foundation.isActive ? "Deactivate" : "Activate"}
+                            </DropdownMenuItem>
+                          </DropdownMenuContent>
+                        </DropdownMenu>
                       </td>
                     </tr>
                   ))}

@@ -11,18 +11,21 @@ export const createProgram = mutation({
     foundationId: v.id("foundations"),
     name: v.string(),
     description: v.string(),
-    programTypeId: v.id("programTypes"),
+    programTypeId: v.optional(v.id("programTypes")),
+    type: v.optional(v.string()), // Alternative to programTypeId
     status: v.union(
       v.literal("planned"),
+      v.literal("planning"), // Support both
       v.literal("open_for_registration"),
       v.literal("active"),
       v.literal("completed"),
       v.literal("cancelled")
     ),
-    startDate: v.string(),
-    endDate: v.optional(v.string()),
+    startDate: v.optional(v.union(v.string(), v.number())), // Support both string and timestamp
+    endDate: v.optional(v.union(v.string(), v.number())),
+    location: v.optional(v.string()), // Support location as alias for venue
     venue: v.optional(v.string()),
-    isVirtual: v.boolean(),
+    isVirtual: v.optional(v.boolean()),
     meetingLink: v.optional(v.string()),
     meetingSchedule: v.optional(v.string()),
     maxParticipants: v.optional(v.number()),
@@ -41,16 +44,66 @@ export const createProgram = mutation({
     // Authenticate and authorize
     const user = await authenticateAndAuthorize(ctx, args.foundationId, ["admin", "super_admin"]);
 
+    // Handle program type
+    let programTypeId = args.programTypeId;
+    
+    if (!programTypeId && args.type) {
+      // Try to find existing program type by name
+      const existingType = await ctx.db
+        .query("programTypes")
+        .withIndex("by_foundation", (q) => q.eq("foundationId", args.foundationId))
+        .filter((q) => q.eq(q.field("name"), args.type))
+        .unique();
+      
+      if (existingType) {
+        programTypeId = existingType._id;
+      } else {
+        // Create a new program type if it doesn't exist
+        programTypeId = await ctx.db.insert("programTypes", {
+          foundationId: args.foundationId,
+          name: args.type,
+          description: `${args.type} program`,
+          requiresApplication: false,
+          hasCapacityLimit: !!args.maxParticipants,
+          maxParticipants: args.maxParticipants,
+          hasFixedSchedule: false,
+          requiresAttendance: false,
+          requiresProgress: false,
+          requiresFeedback: false,
+          isActive: true,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        });
+      }
+    }
+    
+    if (!programTypeId) {
+      throw new Error("Program type is required");
+    }
+
+    // Convert dates to strings if they're timestamps
+    const startDateStr = typeof args.startDate === 'number' 
+      ? new Date(args.startDate).toISOString() 
+      : args.startDate;
+    const endDateStr = args.endDate 
+      ? (typeof args.endDate === 'number' 
+        ? new Date(args.endDate).toISOString() 
+        : args.endDate)
+      : undefined;
+
+    // Normalize status (convert "planning" to "planned")
+    const status = args.status === "planning" ? "planned" : args.status;
+
     const programId = await ctx.db.insert("programs", {
       foundationId: args.foundationId,
-      programTypeId: args.programTypeId,
+      programTypeId: programTypeId,
       name: args.name,
       description: args.description,
-      status: args.status,
-      startDate: args.startDate,
-      endDate: args.endDate,
-      venue: args.venue,
-      isVirtual: args.isVirtual,
+      status: status as any,
+      startDate: startDateStr || new Date().toISOString(),
+      endDate: endDateStr,
+      venue: args.venue || args.location,
+      isVirtual: args.isVirtual ?? false,
       meetingLink: args.meetingLink,
       meetingSchedule: args.meetingSchedule,
       maxParticipants: args.maxParticipants,

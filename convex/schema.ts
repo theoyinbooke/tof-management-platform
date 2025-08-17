@@ -2108,4 +2108,151 @@ export default defineSchema({
     .index("by_clerk_invitation", ["clerkInvitationId"])
     .index("by_email", ["email"])
     .index("by_status", ["foundationId", "status"]),
+
+  // Video Conferencing System
+  meetings: defineTable({
+    foundationId: v.id("foundations"),
+    programId: v.optional(v.id("programs")),
+    programSessionId: v.optional(v.id("programSessions")),
+    
+    // Meeting Details
+    roomName: v.string(), // LiveKit room name
+    title: v.string(),
+    description: v.optional(v.string()),
+    
+    // Meeting Type
+    type: v.optional(v.union(
+      v.literal("instant"), // Quick meeting
+      v.literal("scheduled"), // Scheduled meeting
+      v.literal("recurring") // Recurring meeting
+    )),
+    
+    // Schedule
+    scheduledStartTime: v.number(),
+    scheduledEndTime: v.number(),
+    actualStartTime: v.optional(v.number()),
+    actualEndTime: v.optional(v.number()),
+    
+    // Recurring Meeting
+    recurrence: v.optional(v.object({
+      pattern: v.union(
+        v.literal("daily"),
+        v.literal("weekly"),
+        v.literal("monthly")
+      ),
+      interval: v.number(), // Every N days/weeks/months
+      daysOfWeek: v.optional(v.array(v.number())), // 0-6 for weekly
+      dayOfMonth: v.optional(v.number()), // For monthly
+      endDate: v.optional(v.number()),
+      occurrences: v.optional(v.number())
+    })),
+    recurringMeetingId: v.optional(v.string()), // Parent meeting ID for recurring instances
+    
+    // Access
+    hostId: v.id("users"),
+    coHosts: v.array(v.id("users")),
+    invitedParticipants: v.optional(v.array(v.id("users"))), // List of invited users
+    allowUninvitedJoin: v.optional(v.boolean()), // Allow people not on invite list to join
+    password: v.optional(v.string()),
+    waitingRoomEnabled: v.boolean(),
+    maxParticipants: v.optional(v.number()),
+    
+    // Lobby Settings
+    lobbyBypassType: v.optional(v.union(
+      v.literal("everyone"), // Everyone can bypass
+      v.literal("invited"), // Only invited users
+      v.literal("organization"), // Organization members only
+      v.literal("nobody") // Everyone goes through lobby
+    )),
+    allowedPresenters: v.optional(v.union(
+      v.literal("everyone"),
+      v.literal("organization"),
+      v.literal("specific"),
+      v.literal("host_only")
+    )),
+    allowedPresentersIds: v.optional(v.array(v.id("users"))),
+    
+    // Settings
+    recordingEnabled: v.boolean(),
+    chatEnabled: v.boolean(),
+    screenShareEnabled: v.boolean(),
+    whiteboardEnabled: v.boolean(),
+    autoRecording: v.optional(v.boolean()),
+    blurBackgroundDefault: v.optional(v.boolean()),
+    
+    // Status
+    status: v.union(
+      v.literal("scheduled"),
+      v.literal("live"),
+      v.literal("ended"),
+      v.literal("cancelled")
+    ),
+    
+    // Recording
+    recordingUrl: v.optional(v.string()),
+    recordingDuration: v.optional(v.number()),
+    
+    // Meeting Link
+    meetingLink: v.optional(v.string()), // Persistent meeting link
+    meetingCode: v.optional(v.string()), // Short meeting code for joining
+    
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+  .index("by_foundation", ["foundationId"])
+  .index("by_program", ["programId"])
+  .index("by_host", ["hostId"])
+  .index("by_status", ["status"])
+  .index("by_room_name", ["roomName"])
+  .index("by_meeting_code", ["meetingCode"])
+  .index("by_type", ["type"]),
+
+  meetingParticipants: defineTable({
+    meetingId: v.id("meetings"),
+    userId: v.id("users"),
+    
+    // Participation
+    joinTime: v.number(),
+    leaveTime: v.optional(v.number()),
+    duration: v.optional(v.number()),
+    
+    // Role
+    role: v.union(
+      v.literal("host"),
+      v.literal("co_host"),
+      v.literal("moderator"),
+      v.literal("participant")
+    ),
+    
+    // Activity
+    hasVideo: v.boolean(),
+    hasAudio: v.boolean(),
+    
+    createdAt: v.number(),
+  })
+  .index("by_meeting", ["meetingId"])
+  .index("by_user", ["userId"])
+  .index("by_meeting_user", ["meetingId", "userId"]),
+
+  meetingChat: defineTable({
+    meetingId: v.id("meetings"),
+    userId: v.id("users"),
+    userName: v.string(),
+    
+    // Message
+    message: v.string(),
+    type: v.union(
+      v.literal("text"),
+      v.literal("file"),
+      v.literal("system")
+    ),
+    
+    // File attachment
+    fileUrl: v.optional(v.string()),
+    fileName: v.optional(v.string()),
+    
+    timestamp: v.number(),
+  })
+  .index("by_meeting", ["meetingId"])
+  .index("by_timestamp", ["timestamp"]),
 });

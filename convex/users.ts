@@ -1325,3 +1325,91 @@ export const updatePendingInvitationStatus = internalMutation({
     return { success: true };
   },
 });
+
+/**
+ * Search users by name or email within a foundation for meeting invites
+ */
+export const searchUsersForMeeting = query({
+  args: {
+    foundationId: v.id("foundations"),
+    searchTerm: v.string(),
+  },
+  handler: async (ctx, args) => {
+    // Get the requesting user
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) return [];
+
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_id", (q) => q.eq("clerkId", identity.subject))
+      .unique();
+
+    if (!user || user.foundationId !== args.foundationId) {
+      return [];
+    }
+
+    // Don't return results for very short search terms
+    if (args.searchTerm.length < 2) {
+      return [];
+    }
+
+    // Search for users in the same foundation
+    const searchLower = args.searchTerm.toLowerCase();
+    
+    const users = await ctx.db
+      .query("users")
+      .withIndex("by_foundation", (q) => q.eq("foundationId", args.foundationId))
+      .filter((q) => q.eq(q.field("isActive"), true))
+      .collect();
+
+    // Filter by search term
+    const filtered = users.filter((u) => {
+      const fullName = `${u.firstName || ""} ${u.lastName || ""}`.toLowerCase();
+      const email = u.email.toLowerCase();
+      
+      return (
+        fullName.includes(searchLower) ||
+        email.includes(searchLower) ||
+        (u.firstName && u.firstName.toLowerCase().includes(searchLower)) ||
+        (u.lastName && u.lastName.toLowerCase().includes(searchLower))
+      );
+    });
+
+    // Return basic user info (not sensitive data) - limit to 10 results
+    return filtered.slice(0, 10).map((u) => ({
+      _id: u._id,
+      firstName: u.firstName,
+      lastName: u.lastName,
+      email: u.email,
+      role: u.role,
+      profileImageUrl: u.profile?.profileImageUrl,
+    }));
+  },
+});
+
+/**
+ * Get users by IDs for display purposes
+ */
+export const getUsersByIds = query({
+  args: {
+    userIds: v.array(v.id("users")),
+  },
+  handler: async (ctx, args) => {
+    if (args.userIds.length === 0) return [];
+    
+    const users = await Promise.all(
+      args.userIds.map((id) => ctx.db.get(id))
+    );
+
+    return users
+      .filter(Boolean)
+      .map((u) => ({
+        _id: u!._id,
+        firstName: u!.firstName,
+        lastName: u!.lastName,
+        email: u!.email,
+        role: u!.role,
+        profileImageUrl: u!.profile?.profileImageUrl,
+      }));
+  },
+});

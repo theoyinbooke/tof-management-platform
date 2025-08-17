@@ -1,5 +1,13 @@
 @import "tailwindcss";
 
+/* Calendar styles for react-day-picker v9 */
+@layer base {
+  :root {
+    --rdp-cell-size: 40px;
+    --rdp-spacing: 4px;
+  }
+}
+
 /* Hide scrollbars utility class */
 @layer utilities {
   .no-scrollbar::-webkit-scrollbar {

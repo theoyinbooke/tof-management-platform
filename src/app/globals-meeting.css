@@ -1,0 +1,73 @@
+/* Global overrides for meeting pages */
+
+/* Force hide ALL LiveKit default UI components */
+body:has(.lk-room-container) {
+  overflow: hidden !important;
+}
+
+/* LiveKit control bar and buttons - complete removal */
+.lk-control-bar,
+.lk-control-bar-container,
+.lk-button,
+.lk-button-group,
+.lk-button-group-container,
+.lk-disconnect-button,
+.lk-camera-button,
+.lk-microphone-button,
+.lk-screen-share-button,
+.lk-chat-toggle,
+.lk-settings-menu,
+.lk-start-audio,
+.lk-participant-metadata,
+.lk-participant-name,
+.lk-connection-quality,
+.lk-speaking-indicator,
+.lk-audio-track,
+.lk-muted-indicator {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  height: 0 !important;
+  width: 0 !important;
+  position: absolute !important;
+  left: -9999px !important;
+}
+
+/* Ensure our custom controls are visible */
+.meeting-controls button {
+  opacity: 1 !important;
+  visibility: visible !important;
+  pointer-events: auto !important;
+}
+
+/* Remove LiveKit backgrounds */
+.lk-room-container,
+.lk-video-conference,
+.lk-video-conference-layout,
+.lk-grid-layout,
+.lk-focus-layout {
+  background: transparent !important;
+  background-color: transparent !important;
+}
+
+/* Ensure video elements are properly styled */
+.lk-participant video,
+.lk-participant-tile video {
+  border-radius: 0 !important;
+  background: #1f2937 !important;
+}
+
+/* Override any inline styles */
+[style*="background-color: rgb(26, 26, 26)"] {
+  background-color: transparent !important;
+}
+
+[style*="background: rgb(26, 26, 26)"] {
+  background: transparent !important;
+}
+
+/* Ensure proper z-index hierarchy */
+.meeting-interface-wrapper {
+  z-index: 9999 !important;
+  position: relative !important;
+}

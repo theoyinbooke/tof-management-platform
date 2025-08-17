@@ -2,22 +2,21 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   typescript: {
-    // ⚠️ Dangerously allow production builds to successfully complete even if
-    // your project has type errors.
     ignoreBuildErrors: true,
   },
   eslint: {
-    // Warning: This allows production builds to successfully complete even if
-    // your project has ESLint errors.
     ignoreDuringBuilds: true,
   },
   experimental: {
-    // Fix for client-reference-manifest issues
     optimizePackageImports: ["@/components", "@/hooks"],
+  },
+  // Ensure server works in WSL/Docker environments
+  async rewrites() {
+    return [];
   },
   // Add webpack configuration to handle client components better
   webpack: (config, { isServer }) => {
-    // Fix for client component issues in production
+    // Fix for client component issues
     if (!isServer) {
       config.resolve.fallback = {
         ...config.resolve.fallback,

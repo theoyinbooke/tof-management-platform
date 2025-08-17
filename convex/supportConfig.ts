@@ -176,6 +176,220 @@ export const updateSupportConfig = mutation({
 });
 
 /**
+ * Get all support configurations for display (no auth required for viewing)
+ * This is specifically for beneficiaries to see all available support types
+ */
+export const getAllSupportsForDisplay = query({
+  args: {
+    foundationId: v.id("foundations"),
+    userId: v.optional(v.id("users")),
+  },
+  handler: async (ctx, args) => {
+    console.log("getAllSupportsForDisplay called with:", { foundationId: args.foundationId, userId: args.userId });
+    
+    // Get ALL support configurations for the foundation
+    const allConfigs = await ctx.db
+      .query("supportConfigurations")
+      .withIndex("by_foundation", (q) => q.eq("foundationId", args.foundationId))
+      .collect();
+    
+    console.log(`Raw configs from DB:`, allConfigs.map(c => ({
+      id: c._id,
+      supportType: c.supportType,
+      displayName: c.displayName,
+      isActive: c.isActive
+    })));
+    
+    // Show all configs regardless of isActive status
+    // This ensures beneficiaries can always see what's available
+    const configs = allConfigs;
+    
+    console.log(`Returning ${configs.length} support configs for foundation ${args.foundationId}`);
+    
+    // If userId is provided, check eligibility
+    if (args.userId) {
+      const user = await ctx.db.get(args.userId);
+      if (user) {
+        return configs.map(config => {
+          const eligibilityInfo = checkUserEligibility(config, user);
+          const userLevel = user.profile?.beneficiaryInfo?.currentLevel || "primary_1";
+          const amountInfo = calculateSupportAmount(config, userLevel, user.profile);
+          
+          return {
+            ...config,
+            eligibility: eligibilityInfo,
+            estimatedAmount: amountInfo,
+          };
+        });
+      }
+    }
+    
+    // Return configs without eligibility info if no user
+    return configs.map(config => ({
+      ...config,
+      eligibility: {
+        isEligible: false,
+        isLocked: true,
+        reasons: ["Sign in to check eligibility"],
+        missingRequirements: [],
+        requiredLevel: null,
+        currentLevel: null,
+      },
+      estimatedAmount: {
+        min: 0,
+        max: 0,
+        default: 0,
+        currency: "NGN",
+        frequency: "once",
+      }
+    }));
+  },
+});
+
+/**
+ * Quick fix to ensure all support configs are active
+ */
+export const quickFixActivateAll = mutation({
+  args: {
+    foundationId: v.id("foundations"),
+  },
+  handler: async (ctx, args) => {
+    // Simple auth check
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Not authenticated");
+    
+    // Get all configs for this foundation
+    const configs = await ctx.db
+      .query("supportConfigurations")
+      .withIndex("by_foundation", (q) => q.eq("foundationId", args.foundationId))
+      .collect();
+    
+    let fixedCount = 0;
+    
+    // Ensure each config is active
+    for (const config of configs) {
+      await ctx.db.patch(config._id, {
+        isActive: true,
+        updatedAt: Date.now(),
+      });
+      fixedCount++;
+    }
+    
+    return { 
+      success: true, 
+      message: `Activated ${fixedCount} support configurations`,
+      totalConfigs: configs.length,
+    };
+  },
+});
+
+/**
+ * Reactivate all support configurations for a foundation
+ */
+export const reactivateAllConfigs = mutation({
+  args: {
+    foundationId: v.id("foundations"),
+  },
+  handler: async (ctx, args) => {
+    const user = await authenticateAndAuthorize(ctx, args.foundationId, ["admin", "super_admin"]);
+    
+    // Get all configs for this foundation
+    const configs = await ctx.db
+      .query("supportConfigurations")
+      .withIndex("by_foundation", (q) => q.eq("foundationId", args.foundationId))
+      .collect();
+    
+    let reactivatedCount = 0;
+    
+    // Reactivate each config
+    for (const config of configs) {
+      if (!config.isActive) {
+        await ctx.db.patch(config._id, {
+          isActive: true,
+          updatedAt: Date.now(),
+        });
+        reactivatedCount++;
+      }
+    }
+    
+    // Create audit log
+    await ctx.db.insert("auditLogs", {
+      foundationId: args.foundationId,
+      userId: user._id,
+      userEmail: user.email,
+      userRole: user.role,
+      action: "reactivate_all_configs",
+      entityType: "supportConfigurations",
+      entityId: configs[0]?._id || "none",
+      description: `Reactivated ${reactivatedCount} support configurations`,
+      riskLevel: "low",
+      createdAt: Date.now(),
+    });
+    
+    return { 
+      success: true, 
+      totalConfigs: configs.length,
+      reactivatedCount 
+    };
+  },
+});
+
+/**
+ * Simple debug query to get all support configs without any filtering or auth
+ */
+export const debugGetAllSupports = query({
+  args: {
+    foundationId: v.id("foundations"),
+  },
+  handler: async (ctx, args) => {
+    const configs = await ctx.db
+      .query("supportConfigurations")
+      .withIndex("by_foundation", (q) => q.eq("foundationId", args.foundationId))
+      .collect();
+    
+    return {
+      count: configs.length,
+      configs: configs.map(c => ({
+        id: c._id,
+        supportType: c.supportType,
+        displayName: c.displayName,
+        isActive: c.isActive,
+        description: c.description,
+      }))
+    };
+  },
+});
+
+/**
+ * Count support configurations for debugging
+ */
+export const countSupportConfigs = query({
+  args: {
+    foundationId: v.id("foundations"),
+  },
+  handler: async (ctx, args) => {
+    const allConfigs = await ctx.db
+      .query("supportConfigurations")
+      .withIndex("by_foundation", (q) => q.eq("foundationId", args.foundationId))
+      .collect();
+    
+    const activeConfigs = allConfigs.filter(c => c.isActive);
+    
+    return {
+      total: allConfigs.length,
+      active: activeConfigs.length,
+      inactive: allConfigs.length - activeConfigs.length,
+      configs: allConfigs.map(c => ({
+        id: c._id,
+        supportType: c.supportType,
+        displayName: c.displayName,
+        isActive: c.isActive
+      }))
+    };
+  },
+});
+
+/**
  * Get all support configurations for a foundation
  */
 export const getSupportConfigurations = query({
@@ -299,6 +513,197 @@ export const getEligibleSupports = query({
 });
 
 /**
+ * Get all support configurations with eligibility status for a user
+ * This returns ALL support types, marking which ones the user is eligible for
+ */
+export const getAllSupportsWithEligibility = query({
+  args: {
+    userId: v.id("users"),
+    foundationId: v.id("foundations"),
+  },
+  handler: async (ctx, args) => {
+    // Try a simpler auth approach for beneficiaries viewing support types
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      console.error("No identity found");
+      return [];
+    }
+    
+    const requestingUser = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_id", (q) => q.eq("clerkId", identity.subject))
+      .unique();
+    
+    if (!requestingUser) {
+      console.error("User not found");
+      return [];
+    }
+    
+    // Get the target user's profile
+    const targetUser = await ctx.db.get(args.userId);
+    if (!targetUser) {
+      console.error("Target user not found");
+      return [];
+    }
+    
+    // Get all active support configurations
+    const configs = await ctx.db
+      .query("supportConfigurations")
+      .withIndex("by_active", (q) => 
+        q.eq("foundationId", args.foundationId).eq("isActive", true)
+      )
+      .collect();
+    
+    // If no configs found, return empty array
+    if (!configs || configs.length === 0) {
+      console.log("No active support configurations found for foundation:", args.foundationId);
+      return [];
+    }
+    
+    // Check eligibility for each configuration
+    const configsWithEligibility = configs.map(config => {
+      const eligibilityInfo = checkUserEligibility(config, targetUser);
+      const userLevel = targetUser.profile?.beneficiaryInfo?.currentLevel || "primary_1";
+      const amountInfo = calculateSupportAmount(config, userLevel, targetUser.profile);
+      
+      return {
+        ...config,
+        eligibility: eligibilityInfo,
+        estimatedAmount: amountInfo,
+      };
+    });
+    
+    return configsWithEligibility;
+  },
+});
+
+/**
+ * Helper function to check user eligibility and return detailed information
+ */
+const checkUserEligibility = (config: any, user: any) => {
+  const rules = config.eligibilityRules;
+  const profile = user.profile;
+  const reasons: string[] = [];
+  const missingRequirements: string[] = [];
+  let isEligible = true;
+  let isLocked = false;
+  
+  // Check if profile is complete enough
+  if (!profile) {
+    return {
+      isEligible: false,
+      isLocked: true,
+      reasons: ["Profile not set up"],
+      missingRequirements: ["Complete profile setup"],
+      requiredLevel: null,
+      currentLevel: null,
+    };
+  }
+  
+  // Check basic profile requirements
+  if (!profile.dateOfBirth) {
+    missingRequirements.push("Date of birth");
+    isLocked = true;
+  }
+  
+  if (!profile.beneficiaryInfo?.currentLevel) {
+    missingRequirements.push("Current academic level");
+    isLocked = true;
+  }
+  
+  if (!profile.beneficiaryInfo?.currentSchool) {
+    missingRequirements.push("Current school");
+    isLocked = true;
+  }
+  
+  if (isLocked) {
+    return {
+      isEligible: false,
+      isLocked: true,
+      reasons: ["Profile incomplete"],
+      missingRequirements,
+      requiredLevel: rules.minAcademicLevel || null,
+      currentLevel: profile?.beneficiaryInfo?.currentLevel || null,
+    };
+  }
+  
+  // Check academic level requirements
+  const currentLevel = profile.beneficiaryInfo?.currentLevel;
+  if (currentLevel) {
+    if (rules.minAcademicLevel && 
+        !isAcademicLevelGreaterOrEqual(currentLevel, rules.minAcademicLevel)) {
+      reasons.push(`Minimum level required: ${formatAcademicLevel(rules.minAcademicLevel)}`);
+      isEligible = false;
+    }
+    
+    if (rules.maxAcademicLevel && 
+        !isAcademicLevelLessOrEqual(currentLevel, rules.maxAcademicLevel)) {
+      reasons.push(`Maximum level exceeded: ${formatAcademicLevel(rules.maxAcademicLevel)}`);
+      isEligible = false;
+    }
+  }
+  
+  // Check age requirements
+  if (profile.dateOfBirth) {
+    const age = calculateAge(profile.dateOfBirth);
+    
+    if (rules.minAge && age < rules.minAge) {
+      reasons.push(`Minimum age: ${rules.minAge} years (current: ${age})`);
+      isEligible = false;
+    }
+    
+    if (rules.maxAge && age > rules.maxAge) {
+      reasons.push(`Maximum age: ${rules.maxAge} years (current: ${age})`);
+      isEligible = false;
+    }
+  }
+  
+  // Check gender requirements
+  if (rules.genderRestriction && profile.gender) {
+    if (rules.genderRestriction !== profile.gender) {
+      reasons.push(`Gender requirement: ${rules.genderRestriction}`);
+      isEligible = false;
+    }
+  }
+  
+  // Check grade requirements
+  if (rules.requiresMinGrade) {
+    const lastGrade = profile.beneficiaryInfo?.lastGradePercentage;
+    if (!lastGrade) {
+      missingRequirements.push(`Academic performance record`);
+    } else if (lastGrade < rules.requiresMinGrade) {
+      reasons.push(`Minimum grade: ${rules.requiresMinGrade}% (current: ${lastGrade}%)`);
+      isEligible = false;
+    }
+  }
+  
+  // Check school type restrictions
+  if (rules.schoolTypeRestriction && rules.schoolTypeRestriction.length > 0) {
+    const schoolType = profile.beneficiaryInfo?.schoolType;
+    if (!schoolType || !rules.schoolTypeRestriction.includes(schoolType)) {
+      reasons.push(`School type must be: ${rules.schoolTypeRestriction.join(", ")}`);
+      isEligible = false;
+    }
+  }
+  
+  return {
+    isEligible,
+    isLocked,
+    reasons,
+    missingRequirements,
+    requiredLevel: rules.minAcademicLevel || null,
+    currentLevel: currentLevel || null,
+  };
+};
+
+/**
+ * Helper function to format academic level for display
+ */
+const formatAcademicLevel = (level: string): string => {
+  return level.replace(/_/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
+};
+
+/**
  * Calculate support amount based on user profile and configuration
  */
 export const calculateSupportAmount = (
@@ -398,7 +803,7 @@ export const initializeDefaultConfigs = mutation({
     foundationId: v.id("foundations"),
   },
   handler: async (ctx, args) => {
-    const user = await authenticateAndAuthorize(ctx, args.foundationId, ["super_admin"]);
+    const user = await authenticateAndAuthorize(ctx, args.foundationId, ["admin", "super_admin"]);
     
     const defaultConfigs = [
       {
@@ -616,6 +1021,142 @@ export const initializeDefaultConfigs = mutation({
           financialNeed: 0.3,
           attendance: 0.1,
           specialCircumstances: 0.1,
+          previousSupport: 0,
+        },
+      },
+      {
+        supportType: "books_supplies",
+        displayName: "Books & Learning Materials",
+        description: "Support for textbooks, notebooks, and school supplies",
+        icon: "BookOpen",
+        color: "purple",
+        eligibilityRules: {
+          minAcademicLevel: "nursery_1",
+          maxAcademicLevel: "university_6",
+        },
+        amountConfig: [
+          {
+            academicLevel: "nursery",
+            minAmount: 5000,
+            maxAmount: 15000,
+            defaultAmount: 10000,
+            currency: "NGN" as const,
+            frequency: "termly" as const,
+          },
+          {
+            academicLevel: "primary",
+            minAmount: 10000,
+            maxAmount: 30000,
+            defaultAmount: 20000,
+            currency: "NGN" as const,
+            frequency: "termly" as const,
+          },
+          {
+            academicLevel: "jss",
+            minAmount: 15000,
+            maxAmount: 40000,
+            defaultAmount: 25000,
+            currency: "NGN" as const,
+            frequency: "termly" as const,
+          },
+          {
+            academicLevel: "sss",
+            minAmount: 20000,
+            maxAmount: 50000,
+            defaultAmount: 35000,
+            currency: "NGN" as const,
+            frequency: "termly" as const,
+          },
+          {
+            academicLevel: "university",
+            minAmount: 30000,
+            maxAmount: 80000,
+            defaultAmount: 50000,
+            currency: "NGN" as const,
+            frequency: "per_semester" as const,
+          },
+        ],
+        requiredDocuments: [
+          {
+            documentType: "book_list",
+            displayName: "Required Books List",
+            description: "List of required books from school",
+            isMandatory: true,
+            validityPeriod: 90,
+          },
+        ],
+        applicationSettings: {
+          allowMultipleApplications: false,
+          requiresGuardianConsent: true,
+          requiresAcademicVerification: false,
+          processingDays: 5,
+        },
+        performanceRequirements: {
+          minAttendance: 70,
+          minGradeForRenewal: 50,
+          reviewFrequency: "termly",
+        },
+        priorityWeights: {
+          academicPerformance: 0.3,
+          financialNeed: 0.4,
+          attendance: 0.2,
+          specialCircumstances: 0.1,
+          previousSupport: 0,
+        },
+      },
+      {
+        supportType: "emergency_support",
+        displayName: "Emergency Support Fund",
+        description: "Urgent financial assistance for unforeseen educational needs",
+        icon: "AlertCircle",
+        color: "red",
+        eligibilityRules: {
+          minAcademicLevel: "primary_1",
+          maxAcademicLevel: "university_6",
+          specialConditions: ["emergency_verified"],
+        },
+        amountConfig: [
+          {
+            academicLevel: "all",
+            minAmount: 5000,
+            maxAmount: 100000,
+            defaultAmount: 25000,
+            currency: "NGN" as const,
+            frequency: "once" as const,
+          },
+        ],
+        requiredDocuments: [
+          {
+            documentType: "emergency_letter",
+            displayName: "Emergency Request Letter",
+            description: "Letter explaining the emergency situation",
+            isMandatory: true,
+            validityPeriod: 30,
+          },
+          {
+            documentType: "supporting_docs",
+            displayName: "Supporting Documents",
+            description: "Documents supporting the emergency claim",
+            isMandatory: false,
+            validityPeriod: 30,
+          },
+        ],
+        applicationSettings: {
+          allowMultipleApplications: true,
+          requiresGuardianConsent: true,
+          requiresAcademicVerification: false,
+          processingDays: 2, // Fast processing for emergencies
+        },
+        performanceRequirements: {
+          minAttendance: 60,
+          minGradeForRenewal: 40,
+          reviewFrequency: "yearly",
+        },
+        priorityWeights: {
+          academicPerformance: 0.1,
+          financialNeed: 0.5,
+          attendance: 0.1,
+          specialCircumstances: 0.3,
           previousSupport: 0,
         },
       },

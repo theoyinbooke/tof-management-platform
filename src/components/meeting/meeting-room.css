@@ -1,0 +1,312 @@
+/* Custom styles for meeting room grid layout */
+
+/* Override LiveKit default dark theme */
+.lk-room-container,
+.lk-focus-layout,
+.lk-grid-layout,
+.lk-video-conference {
+  background: transparent !important;
+}
+
+/* Force hide ALL LiveKit UI elements that might conflict */
+.lk-room-container .lk-chat,
+.lk-room-container [data-lk-component="chat"],
+.lk-room-container .lk-control-bar,
+.lk-room-container .lk-sidebar {
+  display: none !important;
+  visibility: hidden !important;
+}
+
+/* Hide default LiveKit controls and chat */
+.lk-control-bar {
+  display: none !important;
+}
+
+.lk-chat,
+.lk-chat-toggle,
+.lk-chat-container,
+.lk-sidebar,
+.lk-control-panel {
+  display: none !important;
+}
+
+/* Override LiveKit participant tiles */
+.lk-participant-tile {
+  background: #1f2937 !important;
+  border-radius: 0.5rem !important;
+}
+
+/* Ensure our interface is on top */
+.meeting-interface {
+  position: relative;
+  z-index: 1000;
+  height: 100%;
+  width: 100%;
+  background: #f9fafb;
+}
+
+/* Gallery view grid optimization for up to 30 participants */
+.gallery-grid {
+  display: grid;
+  gap: 0.5rem;
+  height: 100%;
+  width: 100%;
+  padding: 0.5rem;
+  grid-auto-rows: 1fr;
+}
+
+/* Responsive grid columns based on participant count */
+.gallery-grid.participants-1 {
+  grid-template-columns: 1fr;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.gallery-grid.participants-2 {
+  grid-template-columns: repeat(2, 1fr);
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.gallery-grid.participants-3,
+.gallery-grid.participants-4 {
+  grid-template-columns: repeat(2, 1fr);
+}
+
+.gallery-grid.participants-5,
+.gallery-grid.participants-6 {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.gallery-grid.participants-7,
+.gallery-grid.participants-8,
+.gallery-grid.participants-9 {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.gallery-grid.participants-10,
+.gallery-grid.participants-11,
+.gallery-grid.participants-12 {
+  grid-template-columns: repeat(4, 1fr);
+}
+
+.gallery-grid.participants-13,
+.gallery-grid.participants-14,
+.gallery-grid.participants-15,
+.gallery-grid.participants-16 {
+  grid-template-columns: repeat(4, 1fr);
+}
+
+.gallery-grid.participants-17,
+.gallery-grid.participants-18,
+.gallery-grid.participants-19,
+.gallery-grid.participants-20 {
+  grid-template-columns: repeat(5, 1fr);
+}
+
+.gallery-grid.participants-21,
+.gallery-grid.participants-22,
+.gallery-grid.participants-23,
+.gallery-grid.participants-24,
+.gallery-grid.participants-25 {
+  grid-template-columns: repeat(5, 1fr);
+}
+
+/* For 26-30 participants */
+.gallery-grid.participants-large {
+  grid-template-columns: repeat(6, 1fr);
+}
+
+/* Ensure participant tiles maintain aspect ratio */
+.participant-tile-wrapper {
+  position: relative;
+  width: 100%;
+  padding-bottom: 56.25%; /* 16:9 aspect ratio */
+  background: #374151;
+  border-radius: 0.5rem;
+  overflow: hidden;
+  border: 2px solid #4b5563;
+}
+
+.participant-tile-content {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+}
+
+/* Screen share layout styles */
+.screen-share-layout {
+  display: flex;
+  height: 100%;
+  gap: 0.5rem;
+  padding: 0.5rem;
+}
+
+.screen-share-main {
+  flex: 1;
+  background: #1f2937;
+  border-radius: 0.5rem;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid #374151;
+}
+
+.screen-share-sidebar {
+  width: 280px;
+  background: #374151;
+  border-radius: 0.5rem;
+  padding: 0.5rem;
+  overflow-y: auto;
+  overflow-x: hidden;
+  border: 2px solid #4b5563;
+}
+
+.screen-share-sidebar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.screen-share-sidebar::-webkit-scrollbar-track {
+  background: #374151;
+  border-radius: 3px;
+}
+
+.screen-share-sidebar::-webkit-scrollbar-thumb {
+  background: #6b7280;
+  border-radius: 3px;
+}
+
+.screen-share-sidebar::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
+.sidebar-participant {
+  margin-bottom: 0.5rem;
+  aspect-ratio: 16/9;
+  background: #1f2937;
+  border-radius: 0.5rem;
+  overflow: hidden;
+  position: relative;
+  border: 1px solid #4b5563;
+}
+
+.sidebar-participant-name {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding: 0.25rem 0.5rem;
+  background: linear-gradient(to top, rgba(0,0,0,0.8), transparent);
+  color: white;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+/* Smooth transitions */
+.layout-transition {
+  transition: all 0.3s ease-in-out;
+}
+
+/* Chat styling enhancements */
+.chat-message-enter {
+  animation: slideInRight 0.3s ease-out;
+}
+
+.chat-message-own-enter {
+  animation: slideInLeft 0.3s ease-out;
+}
+
+@keyframes slideInRight {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slideInLeft {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* Custom scrollbar for chat */
+.chat-scrollbar::-webkit-scrollbar {
+  width: 6px;
+}
+
+.chat-scrollbar::-webkit-scrollbar-track {
+  background: #f3f4f6;
+  border-radius: 3px;
+}
+
+.chat-scrollbar::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 3px;
+}
+
+.chat-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
+
+/* Smooth focus transitions for input */
+.chat-input-focus {
+  transition: all 0.2s ease-in-out;
+}
+
+.chat-input-focus:focus-within {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(16, 163, 74, 0.15);
+}
+
+/* Mobile responsive adjustments */
+@media (max-width: 768px) {
+  .gallery-grid {
+    gap: 0.25rem;
+    padding: 0.25rem;
+  }
+  
+  .gallery-grid.participants-large {
+    grid-template-columns: repeat(3, 1fr);
+  }
+  
+  .screen-share-sidebar {
+    width: 120px;
+  }
+}
+
+@media (max-width: 640px) {
+  .gallery-grid.participants-large {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  
+  .screen-share-layout {
+    flex-direction: column;
+  }
+  
+  .screen-share-sidebar {
+    width: 100%;
+    height: 150px;
+    display: flex;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+  
+  .sidebar-participant {
+    min-width: 120px;
+    height: 100%;
+    margin-right: 0.5rem;
+    margin-bottom: 0;
+  }
+}

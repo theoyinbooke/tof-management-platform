@@ -21,6 +21,7 @@ import { toast } from "sonner";
 
 interface DocumentUploadStepProps {
   form: UseFormReturn<any>;
+  supportConfig?: any;
 }
 
 interface UploadedFile {
@@ -33,60 +34,39 @@ interface UploadedFile {
   progress?: number;
 }
 
-const documentTypes = [
-  {
-    id: "passport_photo",
-    label: "Passport Photograph",
-    description: "Recent passport-size photograph",
-    required: true,
-    accept: "image/*",
-    maxSize: 2 * 1024 * 1024, // 2MB
-  },
-  {
-    id: "birth_certificate",
-    label: "Birth Certificate/Age Declaration",
-    description: "Official birth certificate or age declaration",
-    required: true,
-    accept: ".pdf,.jpg,.jpeg,.png",
-    maxSize: 5 * 1024 * 1024, // 5MB
-  },
-  {
-    id: "school_id",
-    label: "School ID Card or Student Certificate",
-    description: "Current school identification or enrollment certificate",
-    required: true,
-    accept: ".pdf,.jpg,.jpeg,.png",
-    maxSize: 5 * 1024 * 1024, // 5MB
-  },
-  {
-    id: "report_card",
-    label: "Recent Report Card/Academic Results",
-    description: "Most recent academic performance report",
-    required: false,
-    accept: ".pdf,.jpg,.jpeg,.png",
-    maxSize: 5 * 1024 * 1024, // 5MB
-  },
-  {
-    id: "guardian_id",
-    label: "Guardian's ID Document",
-    description: "Guardian's national ID, driver's license, or voter's card",
-    required: false,
-    accept: ".pdf,.jpg,.jpeg,.png",
-    maxSize: 5 * 1024 * 1024, // 5MB
-  },
-  {
-    id: "additional_docs",
-    label: "Additional Supporting Documents",
-    description: "Any other relevant documents (medical records, recommendation letters, etc.)",
-    required: false,
-    accept: ".pdf,.jpg,.jpeg,.png,.doc,.docx",
-    maxSize: 10 * 1024 * 1024, // 10MB
-  }
-];
 
-export function DocumentUploadStep({ form }: DocumentUploadStepProps) {
+export function DocumentUploadStep({ form, supportConfig }: DocumentUploadStepProps) {
   const [uploadedFiles, setUploadedFiles] = useState<Record<string, UploadedFile[]>>({});
   const generateUploadUrl = useMutation(api.files.generateUploadUrl);
+
+  // Use dynamic document requirements from support config, fallback to static if not available
+  const documentTypes = supportConfig?.requiredDocuments?.map((doc: any) => ({
+    id: doc.documentType,
+    label: doc.displayName,
+    description: doc.description || `Upload your ${doc.displayName.toLowerCase()}`,
+    required: doc.isMandatory,
+    accept: ".pdf,.jpg,.jpeg,.png",
+    maxSize: 5 * 1024 * 1024, // 5MB
+    validityPeriod: doc.validityPeriod,
+  })) || [
+    // Fallback static documents if no support config
+    {
+      id: "passport_photo",
+      label: "Passport Photograph",
+      description: "Recent passport-size photograph",
+      required: true,
+      accept: "image/*",
+      maxSize: 2 * 1024 * 1024, // 2MB
+    },
+    {
+      id: "application_form",
+      label: "Application Form",
+      description: "Completed application form",
+      required: true,
+      accept: ".pdf,.jpg,.jpeg,.png",
+      maxSize: 5 * 1024 * 1024, // 5MB
+    },
+  ];
 
   const formatFileSize = (bytes: number) => {
     if (bytes === 0) return '0 Bytes';

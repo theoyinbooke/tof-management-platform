@@ -168,6 +168,77 @@ export const update = mutation({
 });
 
 /**
+ * Initialize default program types for a foundation
+ */
+export const initializeDefaults = mutation({
+  args: {
+    foundationId: v.id("foundations"),
+  },
+  handler: async (ctx, args) => {
+    const currentUser = await authenticateAndAuthorize(ctx, args.foundationId, [
+      "super_admin",
+      "admin",
+    ]);
+
+    // Check if foundation already has program types
+    const existingTypes = await ctx.db
+      .query("programTypes")
+      .withIndex("by_foundation", (q) => q.eq("foundationId", args.foundationId))
+      .collect();
+
+    if (existingTypes.length > 0) {
+      return { success: false, message: "Foundation already has program types" };
+    }
+
+    // Default program types for Nigerian educational foundation
+    const defaultTypes = [
+      { name: "Workshop", description: "Short-term skill-building sessions" },
+      { name: "Mentorship", description: "One-on-one guidance program" },
+      { name: "Tutoring", description: "Academic support sessions" },
+      { name: "Scholarship", description: "Financial aid program" },
+      { name: "Career Guidance", description: "Professional development" },
+      { name: "Life Skills", description: "Personal development training" },
+      { name: "JAMB Preparation", description: "JAMB exam preparation" },
+      { name: "WAEC Preparation", description: "WAEC exam preparation" },
+    ];
+
+    // Create all default program types
+    for (const typeData of defaultTypes) {
+      await ctx.db.insert("programTypes", {
+        foundationId: args.foundationId,
+        name: typeData.name,
+        description: typeData.description,
+        requiresApplication: false,
+        hasCapacityLimit: false,
+        hasFixedSchedule: false,
+        requiresAttendance: false,
+        requiresProgress: false,
+        requiresFeedback: false,
+        isActive: true,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+    }
+
+    // Create audit log
+    await ctx.db.insert("auditLogs", {
+      foundationId: args.foundationId,
+      userId: currentUser._id,
+      userEmail: currentUser.email,
+      userRole: currentUser.role,
+      action: "program_types_initialized",
+      entityType: "programTypes",
+      entityId: args.foundationId,
+      description: `Initialized ${defaultTypes.length} default program types`,
+      riskLevel: "low",
+      createdAt: Date.now(),
+    });
+
+    return { success: true, count: defaultTypes.length };
+  },
+});
+
+/**
  * Delete a program type
  */
 export const remove = mutation({

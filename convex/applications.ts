@@ -171,6 +171,64 @@ export const createApplication = mutation({
   },
 });
 
+// Get all applications for a foundation
+export const getAll = query({
+  args: { 
+    foundationId: v.id("foundations"),
+    status: v.optional(v.string()),
+    search: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    // Get the current user for authorization
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) {
+      return [];
+    }
+    
+    const userDoc = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_id", (q) => q.eq("clerkId", identity.subject))
+      .unique();
+    
+    if (!userDoc || !userDoc.isActive) {
+      return [];
+    }
+    
+    // Check if user has access to this foundation
+    if (userDoc.foundationId !== args.foundationId && !["super_admin"].includes(userDoc.role)) {
+      return [];
+    }
+    
+    let query = ctx.db
+      .query("applications")
+      .withIndex("by_foundation", (q) => q.eq("foundationId", args.foundationId));
+    
+    const applications = await query.collect();
+    
+    // Apply filters
+    let filtered = applications;
+    
+    if (args.status) {
+      filtered = filtered.filter(app => app.status === args.status);
+    }
+    
+    if (args.search) {
+      const searchLower = args.search.toLowerCase();
+      filtered = filtered.filter(app =>
+        app.firstName.toLowerCase().includes(searchLower) ||
+        app.lastName.toLowerCase().includes(searchLower) ||
+        app.applicationNumber.toLowerCase().includes(searchLower) ||
+        (app.email?.toLowerCase().includes(searchLower) || false)
+      );
+    }
+    
+    // Sort by creation date (newest first)
+    filtered.sort((a, b) => b.createdAt - a.createdAt);
+    
+    return filtered;
+  },
+});
+
 // Get user's applications
 export const getMyApplications = query({
   handler: async (ctx) => {

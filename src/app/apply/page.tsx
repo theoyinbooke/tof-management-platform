@@ -42,6 +42,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
+import { SupportTypeSelectionStep } from "@/components/application/support-type-selection-step";
 import { PersonalInformationStep } from "@/components/application/personal-information-step";
 import { EducationalBackgroundStep } from "@/components/application/educational-background-step";
 import { GuardianInformationStep } from "@/components/application/guardian-information-step";
@@ -113,13 +114,14 @@ const ApplicationSchema = z.object({
 type ApplicationFormData = z.infer<typeof ApplicationSchema>;
 
 const steps = [
-  { id: 1, title: "Personal Information", icon: Users, description: "Basic personal details" },
-  { id: 2, title: "Educational Background", icon: GraduationCap, description: "Academic information" },
-  { id: 3, title: "Guardian Information", icon: Users, description: "Parent/guardian details" },
-  { id: 4, title: "Financial Information", icon: DollarSign, description: "Family financial details" },
-  { id: 5, title: "Application Essays", icon: FileText, description: "Personal statements" },
-  { id: 6, title: "Document Upload", icon: Upload, description: "Upload required documents" },
-  { id: 7, title: "Review & Submit", icon: CheckCircle, description: "Review and submit application" },
+  { id: 1, title: "Support Type Selection", icon: Building2, description: "Choose the support you're applying for" },
+  { id: 2, title: "Personal Information", icon: Users, description: "Basic personal details" },
+  { id: 3, title: "Educational Background", icon: GraduationCap, description: "Academic information" },
+  { id: 4, title: "Guardian Information", icon: Users, description: "Parent/guardian details" },
+  { id: 5, title: "Financial Information", icon: DollarSign, description: "Family financial details" },
+  { id: 6, title: "Application Essays", icon: FileText, description: "Personal statements" },
+  { id: 7, title: "Document Upload", icon: Upload, description: "Upload required documents" },
+  { id: 8, title: "Review & Submit", icon: CheckCircle, description: "Review and submit application" },
 ];
 
 export default function ApplicationPage() {
@@ -129,9 +131,39 @@ export default function ApplicationPage() {
   const [applicationNumber, setApplicationNumber] = useState<string>("");
   const { user } = useCurrentUser();
 
-  // Get the first active foundation (for demo purposes)
+  // Get the foundation - prioritize user's foundation if they have one
   const foundations = useQuery(api.foundations.getAll);
-  const defaultFoundation = foundations?.[0];
+  const defaultFoundation = user?.foundationId 
+    ? foundations?.find(f => f._id === user.foundationId) || foundations?.[0]
+    : foundations?.[0];
+  
+  // Get available support configurations based on user role
+  // For beneficiaries, use the simpler display function that always works
+  const supportConfigs = useQuery(
+    api.supportConfig.getAllSupportsForDisplay,
+    defaultFoundation 
+      ? { 
+          foundationId: defaultFoundation._id,
+          userId: user?._id 
+        }
+      : "skip"
+  );
+
+  // Debug query to verify data exists
+  const debugConfigs = useQuery(
+    api.supportConfig.debugGetAllSupports,
+    defaultFoundation ? { foundationId: defaultFoundation._id } : "skip"
+  );
+
+  // Debug logging
+  console.log("Apply page - User:", user?.role, user?._id);
+  console.log("Apply page - Foundation:", defaultFoundation?._id);
+  console.log("Apply page - Support configs received:", supportConfigs);
+  console.log("Apply page - Debug configs:", debugConfigs);
+  
+  // Support type selection state
+  const [selectedSupportType, setSelectedSupportType] = useState<string>("");
+  const [selectedSupportConfig, setSelectedSupportConfig] = useState<any>(null);
   
   // Check if user can submit applications
   const applicationEligibility = useQuery(
@@ -188,21 +220,49 @@ export default function ApplicationPage() {
 
   const progress = (currentStep / steps.length) * 100;
 
+  // Update selected support config when support type changes
+  useEffect(() => {
+    if (selectedSupportType && supportConfigs) {
+      const config = supportConfigs.find(c => c._id === selectedSupportType);
+      setSelectedSupportConfig(config);
+    }
+  }, [selectedSupportType, supportConfigs]);
+
   const validateCurrentStep = async () => {
     const values = form.getValues();
     
     switch (currentStep) {
       case 1:
-        return await form.trigger(["firstName", "lastName", "dateOfBirth", "gender", "phone", "email", "address"]);
+        // Support Type Selection
+        if (!selectedSupportType) {
+          toast.error("Please select a support type to continue");
+          return false;
+        }
+        
+        // Check if selected support type is eligible
+        if (selectedSupportConfig && supportConfigs) {
+          const config = supportConfigs.find(c => c._id === selectedSupportType);
+          if (config) {
+            // You could add eligibility checking here, but we'll handle it in the component
+            // by only allowing selection of eligible support types
+          }
+        }
+        return true;
       case 2:
-        return await form.trigger(["education"]);
+        return await form.trigger(["firstName", "lastName", "dateOfBirth", "gender", "phone", "email", "address"]);
       case 3:
-        return await form.trigger(["guardian"]);
+        return await form.trigger(["education"]);
       case 4:
-        return await form.trigger(["financial"]);
+        // Check if guardian info is required based on support config
+        if (selectedSupportConfig?.applicationSettings?.requiresGuardianConsent) {
+          return await form.trigger(["guardian"]);
+        }
+        return true;
       case 5:
-        return await form.trigger(["essays"]);
+        return await form.trigger(["financial"]);
       case 6:
+        return await form.trigger(["essays"]);
+      case 7:
         return await form.trigger(["acceptTerms"]);
       default:
         return true;
@@ -238,6 +298,7 @@ export default function ApplicationPage() {
     try {
       const applicationId = await submitApplication({
         foundationId: defaultFoundation._id,
+        supportConfigId: selectedSupportType,
         ...data,
       });
 
@@ -331,7 +392,7 @@ export default function ApplicationPage() {
     );
   }
 
-  if (!foundations || !applicationEligibility) {
+  if (!foundations || !applicationEligibility || supportConfigs === undefined) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
@@ -468,13 +529,51 @@ export default function ApplicationPage() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                {currentStep === 1 && <PersonalInformationStep form={form} />}
-                {currentStep === 2 && <EducationalBackgroundStep form={form} />}
-                {currentStep === 3 && <GuardianInformationStep form={form} />}
-                {currentStep === 4 && <FinancialInformationStep form={form} />}
-                {currentStep === 5 && <ApplicationEssaysStep form={form} />}
-                {currentStep === 6 && <DocumentUploadStep form={form} />}
-                {currentStep === 7 && <ApplicationReviewStep form={form} onEdit={setCurrentStep} />}
+                {currentStep === 1 && (
+                  <>
+                    {/* Debug info - remove in production */}
+                    {process.env.NODE_ENV === 'development' && (
+                      <div className="mb-4 p-3 bg-gray-100 rounded text-xs">
+                        <p>Debug Info:</p>
+                        <p>Foundation ID: {defaultFoundation?._id}</p>
+                        <p>User ID: {user?._id}</p>
+                        <p>Configs from getAllSupportsForDisplay: {supportConfigs?.length || 0}</p>
+                        <p>Configs from debug query: {debugConfigs?.count || 0}</p>
+                        {debugConfigs?.configs?.map((c: any) => (
+                          <p key={c.id}>- {c.displayName} (active: {String(c.isActive)})</p>
+                        ))}
+                      </div>
+                    )}
+                    <SupportTypeSelectionStep 
+                      supportConfigs={Array.isArray(supportConfigs) ? supportConfigs : []}
+                      selectedSupportType={selectedSupportType}
+                      onSupportTypeChange={setSelectedSupportType}
+                      userProfile={user?.profile}
+                    />
+                  </>
+                )}
+                {currentStep === 2 && <PersonalInformationStep form={form} />}
+                {currentStep === 3 && <EducationalBackgroundStep form={form} />}
+                {currentStep === 4 && (
+                  selectedSupportConfig?.applicationSettings?.requiresGuardianConsent ? (
+                    <GuardianInformationStep form={form} />
+                  ) : (
+                    <div className="text-center py-8">
+                      <CheckCircle className="w-12 h-12 text-green-500 mx-auto mb-4" />
+                      <h3 className="text-lg font-semibold text-gray-900 mb-2">Guardian Information Not Required</h3>
+                      <p className="text-gray-600">This support type does not require guardian information.</p>
+                    </div>
+                  )
+                )}
+                {currentStep === 5 && <FinancialInformationStep form={form} />}
+                {currentStep === 6 && <ApplicationEssaysStep form={form} />}
+                {currentStep === 7 && (
+                  <DocumentUploadStep 
+                    form={form} 
+                    supportConfig={selectedSupportConfig}
+                  />
+                )}
+                {currentStep === 8 && <ApplicationReviewStep form={form} onEdit={setCurrentStep} supportConfig={selectedSupportConfig} />}
               </CardContent>
             </Card>
 

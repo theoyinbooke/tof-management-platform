@@ -34,18 +34,20 @@ import {
   CheckCircle,
   AlertCircle,
   User,
-  GraduationCap
+  GraduationCap,
+  Video
 } from "lucide-react";
 import { formatDate, formatCurrency } from "@/lib/utils";
-import { CreateProgramDialog } from "@/components/programs/create-program-dialog";
 import { ProgramCard } from "@/components/programs/program-card";
 import { EnrollmentDialog } from "@/components/programs/enrollment-dialog";
+import { useRouter } from "next/navigation";
 
 export default function ProgramsPage() {
   const { user } = useCurrentUser();
+  const router = useRouter();
   const [selectedProgram, setSelectedProgram] = useState<string | null>(null);
-  const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [enrollDialogOpen, setEnrollDialogOpen] = useState(false);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [filterType, setFilterType] = useState<string>("all");
 
@@ -123,7 +125,7 @@ export default function ProgramsPage() {
               </Button>
             )}
             {canManagePrograms && (
-              <Button onClick={() => setCreateDialogOpen(true)}>
+              <Button onClick={() => router.push("/programs/new")}>
                 <Plus className="w-4 h-4 mr-2" />
                 Create Program
               </Button>
@@ -268,7 +270,6 @@ export default function ProgramsPage() {
                   <div className="flex-1">
                     <CardTitle className="text-lg">{program.name}</CardTitle>
                     <div className="flex gap-2 mt-2">
-                      {getTypeBadge(program.type)}
                       {getStatusBadge(program.status)}
                     </div>
                   </div>
@@ -283,17 +284,24 @@ export default function ProgramsPage() {
                     <span>Starts {formatDate(new Date(program.startDate))}</span>
                   </div>
                   
-                  {program.location && (
+                  {program.venue && (
                     <div className="flex items-center gap-2 text-sm text-gray-600">
                       <MapPin className="w-4 h-4" />
-                      <span>{program.location}</span>
+                      <span>{program.venue}</span>
+                    </div>
+                  )}
+                  
+                  {program.isVirtual && (
+                    <div className="flex items-center gap-2 text-sm text-emerald-600">
+                      <Video className="w-4 h-4" />
+                      <span>Online Program</span>
                     </div>
                   )}
                   
                   <div className="flex items-center gap-2 text-sm text-gray-600">
                     <Users className="w-4 h-4" />
                     <span>
-                      {program.enrollmentCount} enrolled
+                      {program.currentParticipants || 0} enrolled
                       {program.maxParticipants && ` / ${program.maxParticipants} max`}
                     </span>
                   </div>
@@ -309,10 +317,20 @@ export default function ProgramsPage() {
                 </div>
 
                 <div className="flex gap-2 pt-2 border-t">
+                  {program.isVirtual && program.status === "active" && (
+                    <Button
+                      size="sm"
+                      className="bg-emerald-600 hover:bg-emerald-700"
+                      onClick={() => router.push("/meetings")}
+                    >
+                      <Video className="w-4 h-4 mr-1" />
+                      Join Online
+                    </Button>
+                  )}
                   <Button
                     variant="outline"
                     size="sm"
-                    className="flex-1"
+                    className={program.isVirtual && program.status === "active" ? "" : "flex-1"}
                     onClick={() => window.open(`/programs/${program._id}`, '_self')}
                   >
                     <Eye className="w-4 h-4 mr-1" />
@@ -335,7 +353,7 @@ export default function ProgramsPage() {
               <BookOpen className="w-12 h-12 text-gray-400 mx-auto mb-4" />
               <p className="text-gray-600">No programs found</p>
               {canManagePrograms && (
-                <Button className="mt-4" onClick={() => setCreateDialogOpen(true)}>
+                <Button className="mt-4" onClick={() => router.push("/programs/new")}>
                   <Plus className="w-4 h-4 mr-2" />
                   Create First Program
                 </Button>
@@ -344,22 +362,7 @@ export default function ProgramsPage() {
           )}
         </div>
 
-        {/* Create Program Dialog */}
-        <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
-          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>Create New Program</DialogTitle>
-              <DialogDescription>
-                Create a new educational or development program
-              </DialogDescription>
-            </DialogHeader>
-            <CreateProgramDialog
-              foundationId={user?.foundationId!}
-              onSuccess={() => setCreateDialogOpen(false)}
-              onCancel={() => setCreateDialogOpen(false)}
-            />
-          </DialogContent>
-        </Dialog>
+        {/* Create Program Dialog - removed as we're using router navigation */}
 
         {/* Enrollment Dialog */}
         <Dialog open={enrollDialogOpen} onOpenChange={setEnrollDialogOpen}>

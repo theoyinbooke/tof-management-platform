@@ -34,6 +34,7 @@ import {
   Shield,
   Building2,
   Plus,
+  Video,
 } from "lucide-react";
 import { useClerk } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
@@ -100,6 +101,12 @@ const navigationItems: NavItem[] = [
     href: "/programs",
     icon: Calendar,
     roles: ["super_admin", "admin", "beneficiary"],
+  },
+  {
+    title: "Meetings",
+    href: "/meetings",
+    icon: Video,
+    roles: ["super_admin", "admin", "beneficiary", "guardian", "reviewer"],
   },
   {
     title: "Documents",
@@ -251,7 +258,7 @@ export function Sidebar() {
       )}
 
       {/* Navigation Items */}
-      <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
+      <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto no-scrollbar">
         {filteredNavItems.map((item) => {
           const Icon = item.icon;
           const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);

@@ -176,6 +176,39 @@ You are the senior full-stack developer for the TheOyinbooke Foundation Manageme
 
 ## Development Guidelines
 
+### CRITICAL UI/UX Rules
+
+#### ⚠️ NEVER Use Browser Native Prompts/Alerts
+**ABSOLUTELY FORBIDDEN**: Never use `window.prompt()`, `window.alert()`, `window.confirm()` or any browser native dialog methods.
+
+**ALWAYS USE PROPER DIALOGS**: 
+- Use shadcn/ui Dialog components for all user input
+- Use toast notifications (Sonner) for alerts and confirmations
+- Create custom modal components for complex interactions
+- Ensure all dialogs follow the design system specifications
+
+**Example of CORRECT implementation**:
+```typescript
+// ✅ CORRECT - Use Dialog component
+<Dialog open={isOpen} onOpenChange={setIsOpen}>
+  <DialogContent>
+    <DialogHeader>
+      <DialogTitle>Enter Information</DialogTitle>
+      <DialogDescription>Please provide the required details</DialogDescription>
+    </DialogHeader>
+    <Input value={value} onChange={(e) => setValue(e.target.value)} />
+    <DialogFooter>
+      <Button onClick={() => handleSubmit()}>Submit</Button>
+    </DialogFooter>
+  </DialogContent>
+</Dialog>
+
+// ❌ WRONG - Never do this
+const userInput = prompt("Enter value"); // FORBIDDEN
+alert("Success!"); // FORBIDDEN
+if (confirm("Are you sure?")) { } // FORBIDDEN
+```
+
 ### Code Quality Standards
 
 #### TypeScript
@@ -774,6 +807,34 @@ npm run lint       # Run ESLint
 npx convex deploy  # Deploy Convex functions to production
 npx convex run     # Run Convex functions/mutations
 ```
+
+## 🚨 CRITICAL: Background Process Management
+
+**ALWAYS KILL BACKGROUND BASH PROCESSES** after testing/verification:
+
+1. **Never leave `npm run dev` running in background** - User always has their own terminal running this
+2. **Always use `KillBash` tool** after running any background processes for testing
+3. **Avoid port conflicts** - Only one dev server should run on port 3000
+4. **Background processes to immediately kill**:
+   - `npm run dev` (port 3000 conflict)
+   - `npx convex dev` (if user has it running)
+   - Any long-running development servers
+
+**Example workflow**:
+```bash
+# ✅ CORRECT
+1. Run background process for testing: Bash(..., run_in_background: true)
+2. Check output: BashOutput(bash_id)
+3. Verify fix works
+4. IMMEDIATELY kill: KillBash(shell_id)
+
+# ❌ WRONG - Never leave processes running
+1. Run background process for testing
+2. Check output
+3. Move on without killing process ← CAUSES CONFLICTS
+```
+
+**Exception**: Only leave background processes running if user explicitly requests it.
 
 ## Architecture Overview
 

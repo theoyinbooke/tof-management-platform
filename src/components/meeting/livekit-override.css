@@ -1,0 +1,116 @@
+/* LiveKit Component Style Overrides */
+
+/* Remove all default LiveKit UI elements */
+.lk-room-container {
+  height: 100% !important;
+  background: transparent !important;
+}
+
+/* Hide default control bar completely */
+.lk-control-bar,
+.lk-control-bar-container,
+.lk-button-group,
+.lk-mobile-menu,
+.lk-prejoin,
+.lk-chat-toggle {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+/* Remove dark overlays */
+.lk-focus-layout,
+.lk-grid-layout,
+.lk-video-conference-layout {
+  background: transparent !important;
+}
+
+/* Clean up participant tiles */
+.lk-participant,
+.lk-participant-tile {
+  background: transparent !important;
+  border: none !important;
+}
+
+/* Remove participant metadata overlays */
+.lk-participant-metadata,
+.lk-participant-name,
+.lk-connection-quality,
+.lk-participant-placeholder {
+  display: none !important;
+}
+
+/* Ensure video fills container */
+video {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+  background: #1f2937 !important;
+}
+
+/* Screen share video should contain */
+.screen-share-main video {
+  object-fit: contain !important;
+}
+
+/* Remove any focus rings or outlines */
+.lk-participant:focus,
+.lk-participant-tile:focus,
+video:focus {
+  outline: none !important;
+  border: none !important;
+}
+
+/* Ensure our custom UI is always on top */
+.meeting-controls {
+  position: relative !important;
+  z-index: 9999 !important;
+}
+
+/* Remove any default transitions that might interfere */
+.lk-participant,
+.lk-participant-tile,
+.lk-focus-layout,
+.lk-grid-layout {
+  transition: none !important;
+}
+
+/* Force hide any remaining LiveKit UI elements */
+[class*="lk-button"],
+[class*="lk-control"],
+[class*="lk-bar"] {
+  display: none !important;
+}
+
+/* Ensure proper layering */
+.meeting-interface-wrapper {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 1000;
+  pointer-events: none;
+}
+
+.meeting-interface-wrapper > * {
+  pointer-events: auto;
+}
+
+/* Video container styling */
+.video-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background: #1f2937;
+  border-radius: 0.5rem;
+  overflow: hidden;
+}
+
+.video-container.no-video {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, #374151 0%, #1f2937 100%);
+}

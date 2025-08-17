@@ -34,6 +34,18 @@ export function BeneficiaryDashboard() {
     user ? { userId: user._id } : "skip"
   );
 
+  // Query for user's applications (using existing endpoint)
+  const userApplications = useQuery(
+    api.applications.getAll,
+    user?.foundationId ? { foundationId: user.foundationId } : "skip"
+  );
+
+  // Mock data for now - these endpoints need to be created
+  const userPrograms = null; // TODO: Create api.programs.getByUserId
+  const userMessages = null; // TODO: Create api.notifications.getUnreadByUserId  
+  const academicRecords = null; // TODO: Create api.academic.getByUserId
+  const availableResources = null; // TODO: Create api.resources.getAvailable
+
   // If showing profile setup wizard
   if (showProfileSetup && user) {
     return (
@@ -47,215 +59,286 @@ export function BeneficiaryDashboard() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       {/* Profile Completion Banner */}
       <ProfileCompletionBanner onSetupProfile={() => setShowProfileSetup(true)} />
       
-      {/* Welcome Section */}
-      <div className="bg-gradient-to-r from-emerald-600 to-emerald-700 text-white p-6 rounded-xl">
-        <h1 className="text-2xl font-bold">Welcome back, {user?.firstName}!</h1>
-        <p className="mt-2 text-white/90">
-          {profileCompletion?.isComplete 
-            ? "Keep up the great work! Your academic journey is progressing well."
-            : "Complete your profile to unlock all features and start your application journey."
-          }
-        </p>
-        <div className="mt-4 flex gap-4">
-          <div>
-            <p className="text-sm text-white/70">Current Level</p>
-            <p className="text-lg font-semibold">
+      {/* Welcome Section - Compact */}
+      <div className="bg-gradient-to-r from-emerald-600 to-emerald-700 text-white p-4 rounded-xl shadow-lg">
+        <div className="flex items-start justify-between">
+          <div className="flex-1">
+            <h1 className="text-xl font-bold">Welcome back, {user?.firstName}!</h1>
+            <p className="mt-1 text-sm text-white/90">
+              {profileCompletion?.isComplete 
+                ? "Keep up the great work on your academic journey!"
+                : "Complete your profile to unlock all features."
+              }
+            </p>
+          </div>
+          {!profileCompletion?.isComplete && (
+            <Button 
+              onClick={() => setShowProfileSetup(true)}
+              variant="secondary"
+              size="sm"
+              className="bg-white/20 hover:bg-white/30 text-white border-white/30 text-xs"
+            >
+              Complete Profile
+            </Button>
+          )}
+        </div>
+        <div className="mt-3 grid grid-cols-3 gap-3">
+          <div className="bg-white/10 rounded-lg p-2">
+            <p className="text-xs text-white/70 uppercase tracking-wider">Level</p>
+            <p className="text-base font-bold mt-0.5">
               {user?.profile?.beneficiaryInfo?.currentLevel 
                 ? formatAcademicLevel(user.profile.beneficiaryInfo.currentLevel)
                 : "Not Set"
               }
             </p>
           </div>
-          <div>
-            <p className="text-sm text-white/70">Profile Status</p>
-            <p className="text-lg font-semibold">
-              {profileCompletion?.isComplete ? "Complete" : `${profileCompletion?.completionPercentage || 0}% Done`}
+          <div className="bg-white/10 rounded-lg p-2">
+            <p className="text-xs text-white/70 uppercase tracking-wider">Profile</p>
+            <p className="text-base font-bold mt-0.5">
+              {profileCompletion?.isComplete ? "✓ Complete" : `${profileCompletion?.completionPercentage || 0}%`}
             </p>
           </div>
-          <div>
-            <p className="text-sm text-white/70">Current School</p>
-            <p className="text-lg font-semibold">
+          <div className="bg-white/10 rounded-lg p-2">
+            <p className="text-xs text-white/70 uppercase tracking-wider">School</p>
+            <p className="text-base font-bold mt-0.5 truncate">
               {user?.profile?.beneficiaryInfo?.currentSchool || "Not Set"}
             </p>
           </div>
         </div>
-        
-        {!profileCompletion?.isComplete && (
-          <div className="mt-4">
-            <Button 
-              onClick={() => setShowProfileSetup(true)}
-              variant="secondary"
-              className="bg-white/20 hover:bg-white/30 text-white border-white/30"
-            >
-              Complete Profile Now
-            </Button>
-          </div>
-        )}
       </div>
 
-      {/* Quick Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
+      {/* Quick Stats - Compact & Beautiful */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <Card className="group hover:shadow-xl hover:border-gray-300 transition-all duration-300 cursor-pointer border-gray-200 overflow-hidden relative">
+          <CardContent className="p-4">
+            <div className="absolute inset-0 bg-emerald-50 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+            <div className="flex items-start justify-between relative">
               <div>
-                <p className="text-sm text-gray-600">Upcoming Programs</p>
-                <p className="text-2xl font-bold mt-1">3</p>
+                <p className="text-xs font-medium text-gray-600 uppercase tracking-wider">Programs</p>
+                <p className="text-3xl font-bold text-gray-900 mt-1 group-hover:scale-105 transition-transform duration-300 origin-left">
+                  {userPrograms ? userPrograms.filter(p => new Date(p.startDate) > new Date()).length : 0}
+                </p>
+                <p className="text-xs text-gray-500 mt-1">Upcoming events</p>
               </div>
-              <Calendar className="h-8 w-8 text-primary" />
+              <div className="p-2 rounded-lg bg-emerald-50 group-hover:scale-110 transition-transform duration-300">
+                <Calendar className="h-4 w-4 text-emerald-600" />
+              </div>
             </div>
+            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-emerald-600 transform scale-x-0 group-hover:scale-x-100 transition-transform duration-300" />
           </CardContent>
         </Card>
         
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
+        <Card className="group hover:shadow-xl hover:border-gray-300 transition-all duration-300 cursor-pointer border-gray-200 overflow-hidden relative">
+          <CardContent className="p-4">
+            <div className="absolute inset-0 bg-sky-50 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+            <div className="flex items-start justify-between relative">
               <div>
-                <p className="text-sm text-gray-600">Resources Available</p>
-                <p className="text-2xl font-bold mt-1">12</p>
+                <p className="text-xs font-medium text-gray-600 uppercase tracking-wider">Resources</p>
+                <p className="text-3xl font-bold text-gray-900 mt-1 group-hover:scale-105 transition-transform duration-300 origin-left">
+                  {availableResources ? availableResources.length : 0}
+                </p>
+                <p className="text-xs text-gray-500 mt-1">Study materials</p>
               </div>
-              <BookOpen className="h-8 w-8 text-secondary" />
+              <div className="p-2 rounded-lg bg-sky-50 group-hover:scale-110 transition-transform duration-300">
+                <BookOpen className="h-4 w-4 text-sky-600" />
+              </div>
             </div>
+            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-sky-600 transform scale-x-0 group-hover:scale-x-100 transition-transform duration-300" />
           </CardContent>
         </Card>
         
-        <Card>
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
+        <Card className="group hover:shadow-xl hover:border-gray-300 transition-all duration-300 cursor-pointer border-gray-200 overflow-hidden relative">
+          <CardContent className="p-4">
+            <div className="absolute inset-0 bg-amber-50 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+            <div className="flex items-start justify-between relative">
               <div>
-                <p className="text-sm text-gray-600">Messages</p>
-                <p className="text-2xl font-bold mt-1">2</p>
+                <p className="text-xs font-medium text-gray-600 uppercase tracking-wider">Messages</p>
+                <p className="text-3xl font-bold text-gray-900 mt-1 group-hover:scale-105 transition-transform duration-300 origin-left">
+                  {userMessages ? userMessages.length : 0}
+                </p>
+                <p className="text-xs text-gray-500 mt-1">Unread notifications</p>
               </div>
-              <MessageSquare className="h-8 w-8 text-warning" />
+              <div className="p-2 rounded-lg bg-amber-50 group-hover:scale-110 transition-transform duration-300">
+                <MessageSquare className="h-4 w-4 text-amber-600" />
+              </div>
             </div>
+            <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-amber-600 transform scale-x-0 group-hover:scale-x-100 transition-transform duration-300" />
           </CardContent>
         </Card>
       </div>
 
-      {/* Main Content Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Academic Progress */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Academic Progress</CardTitle>
-            <CardDescription>Your performance this term</CardDescription>
+      {/* Main Content Grid - Compact */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Academic Progress - Compact */}
+        <Card className="hover:shadow-lg transition-all duration-300">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Academic Progress</CardTitle>
+            <CardDescription className="text-xs">Your performance this term</CardDescription>
           </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div>
-                <div className="flex justify-between mb-2">
-                  <span className="text-sm font-medium">Overall Performance</span>
-                  <span className="text-sm font-bold text-primary">85%</span>
-                </div>
-                <div className="w-full h-2 bg-gray-200 rounded-full overflow-hidden">
-                  <div className="h-full bg-primary" style={{ width: "85%" }}></div>
-                </div>
+          <CardContent className="pt-0">
+            {academicRecords && academicRecords.length > 0 ? (
+              <div className="space-y-3">
+                {academicRecords.slice(0, 1).map((record) => (
+                  <div key={record._id}>
+                    <div className="flex items-baseline justify-between mb-2">
+                      <span className="text-xs font-medium text-gray-600 uppercase tracking-wider">Performance</span>
+                      <div className="flex items-baseline gap-1">
+                        <span className="text-2xl font-bold text-emerald-600">
+                          {record.overallGrade || record.percentage || "0"}%
+                        </span>
+                        <span className="text-xs text-gray-500">overall</span>
+                      </div>
+                    </div>
+                    <div className="w-full h-1.5 bg-gray-200 rounded-full overflow-hidden">
+                      <div 
+                        className="h-full bg-gradient-to-r from-emerald-500 to-emerald-600 rounded-full transition-all duration-500" 
+                        style={{ width: `${record.percentage || 0}%` }}
+                      />
+                    </div>
+                    
+                    <div className="pt-3 space-y-2">
+                      <div className="flex items-center justify-between p-2 hover:bg-gray-50 rounded-lg transition-colors">
+                        <span className="text-xs text-gray-600">Attendance</span>
+                        <Badge variant="outline" className="text-xs px-1.5 py-0 text-green-700 border-green-300 bg-green-50">
+                          {record.attendance || "N/A"}%
+                        </Badge>
+                      </div>
+                      <div className="flex items-center justify-between p-2 hover:bg-gray-50 rounded-lg transition-colors">
+                        <span className="text-xs text-gray-600">Session</span>
+                        <Badge variant="outline" className="text-xs px-1.5 py-0">
+                          {record.session || "Current"}
+                        </Badge>
+                      </div>
+                      <div className="flex items-center justify-between p-2 hover:bg-gray-50 rounded-lg transition-colors">
+                        <span className="text-xs text-gray-600">Term</span>
+                        <Badge variant="outline" className="text-xs px-1.5 py-0 text-emerald-700 border-emerald-300 bg-emerald-50">
+                          {record.term || "Current"}
+                        </Badge>
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
-              
-              <div className="pt-4 space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm">Attendance</span>
-                  <Badge variant="outline" className="text-success">92%</Badge>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm">Assignments Completed</span>
-                  <Badge variant="outline">18/20</Badge>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-sm">Term Grade</span>
-                  <Badge variant="outline" className="text-primary">A-</Badge>
-                </div>
+            ) : (
+              <div className="text-center py-6">
+                <GraduationCap className="h-8 w-8 text-gray-400 mx-auto mb-2" />
+                <h3 className="text-sm font-semibold text-gray-900 mb-1">No Academic Records</h3>
+                <p className="text-xs text-gray-600 mb-3">
+                  Your academic performance data will appear here once uploaded.
+                </p>
+                <Button variant="outline" size="sm" className="h-7 text-xs">
+                  Upload Report Card
+                </Button>
               </div>
-            </div>
+            )}
           </CardContent>
         </Card>
 
-        {/* Upcoming Programs */}
-        <Card>
-          <CardHeader>
+        {/* Upcoming Programs - Compact */}
+        <Card className="hover:shadow-lg transition-all duration-300">
+          <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <div>
-                <CardTitle>Upcoming Programs</CardTitle>
-                <CardDescription>Don't miss these events</CardDescription>
+                <CardTitle className="text-base">Upcoming Programs</CardTitle>
+                <CardDescription className="text-xs">Don't miss these events</CardDescription>
               </div>
-              <Button variant="outline" size="sm">
+              <Button variant="ghost" size="sm" className="h-7 text-xs">
                 View All
-                <ArrowRight className="ml-2 h-4 w-4" />
+                <ArrowRight className="ml-1 h-3 w-3" />
               </Button>
             </div>
           </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <div className="flex gap-4">
-                <div className="h-10 w-10 bg-primary/10 rounded-lg flex items-center justify-center">
-                  <Trophy className="h-5 w-5 text-primary" />
-                </div>
-                <div className="flex-1">
-                  <p className="font-medium">Career Guidance Workshop</p>
-                  <p className="text-sm text-gray-600">Tomorrow, 2:00 PM</p>
-                </div>
+          <CardContent className="pt-0">
+            {userPrograms?.filter(p => new Date(p.startDate) > new Date()).length > 0 ? (
+              <div className="space-y-2">
+                {userPrograms
+                  .filter(p => new Date(p.startDate) > new Date())
+                  .slice(0, 3)
+                  .map((program) => (
+                    <div key={program._id} className="group flex gap-3 p-2 rounded-lg hover:bg-emerald-50 transition-colors cursor-pointer">
+                      <div className="h-8 w-8 bg-gradient-to-br from-emerald-100 to-emerald-50 rounded-lg flex items-center justify-center flex-shrink-0 group-hover:scale-110 transition-transform">
+                        <Trophy className="h-4 w-4 text-emerald-600" />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-gray-900 truncate">{program.title}</p>
+                        <p className="text-xs text-gray-600">
+                          {new Date(program.startDate).toLocaleDateString('en-NG', {
+                            weekday: 'short',
+                            month: 'short',
+                            day: 'numeric',
+                            hour: '2-digit',
+                            minute: '2-digit'
+                          })}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
               </div>
-              
-              <div className="flex gap-4">
-                <div className="h-10 w-10 bg-secondary/10 rounded-lg flex items-center justify-center">
-                  <Target className="h-5 w-5 text-secondary" />
-                </div>
-                <div className="flex-1">
-                  <p className="font-medium">Mentorship Session</p>
-                  <p className="text-sm text-gray-600">Friday, 10:00 AM</p>
-                </div>
+            ) : (
+              <div className="text-center py-6">
+                <Calendar className="h-8 w-8 text-gray-400 mx-auto mb-2" />
+                <h3 className="text-sm font-semibold text-gray-900 mb-1">No Upcoming Programs</h3>
+                <p className="text-xs text-gray-600 mb-3">
+                  You don't have any scheduled programs at the moment.
+                </p>
+                <Button variant="outline" size="sm" className="h-7 text-xs">
+                  Browse Programs
+                </Button>
               </div>
-              
-              <div className="flex gap-4">
-                <div className="h-10 w-10 bg-warning/10 rounded-lg flex items-center justify-center">
-                  <BookOpen className="h-5 w-5 text-warning" />
-                </div>
-                <div className="flex-1">
-                  <p className="font-medium">Study Skills Training</p>
-                  <p className="text-sm text-gray-600">Next Monday, 3:00 PM</p>
-                </div>
-              </div>
-            </div>
+            )}
           </CardContent>
         </Card>
       </div>
 
-      {/* Resources Section */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Learning Resources</CardTitle>
-          <CardDescription>Materials to support your studies</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Button variant="outline" className="h-auto p-4 justify-start">
-              <FileText className="mr-3 h-5 w-5 text-primary" />
-              <div className="text-left">
-                <p className="font-medium">Study Guides</p>
-                <p className="text-xs text-gray-500">5 documents</p>
-              </div>
-            </Button>
-            
-            <Button variant="outline" className="h-auto p-4 justify-start">
-              <BookOpen className="mr-3 h-5 w-5 text-secondary" />
-              <div className="text-left">
-                <p className="font-medium">Past Questions</p>
-                <p className="text-xs text-gray-500">12 sets available</p>
-              </div>
-            </Button>
-            
-            <Button variant="outline" className="h-auto p-4 justify-start">
-              <Trophy className="mr-3 h-5 w-5 text-warning" />
-              <div className="text-left">
-                <p className="font-medium">Career Resources</p>
-                <p className="text-xs text-gray-500">8 guides</p>
-              </div>
-            </Button>
+      {/* Resources Section - Compact */}
+      <Card className="hover:shadow-lg transition-all duration-300">
+        <CardHeader className="pb-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-base">Learning Resources</CardTitle>
+              <CardDescription className="text-xs">Materials to support your studies</CardDescription>
+            </div>
+            {availableResources && availableResources.length > 6 && (
+              <Button variant="ghost" size="sm" className="h-7 text-xs">
+                View All
+                <ArrowRight className="ml-1 h-3 w-3" />
+              </Button>
+            )}
           </div>
+        </CardHeader>
+        <CardContent className="pt-0">
+          {availableResources && availableResources.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+              {availableResources.slice(0, 6).map((resource) => (
+                <Button 
+                  key={resource._id} 
+                  variant="outline" 
+                  className="h-auto p-3 justify-start hover:bg-sky-50 hover:border-sky-300 transition-colors group"
+                >
+                  <FileText className="mr-2 h-4 w-4 text-sky-600 group-hover:scale-110 transition-transform" />
+                  <div className="text-left flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{resource.title}</p>
+                    <p className="text-xs text-gray-500">{resource.type || "Document"}</p>
+                  </div>
+                </Button>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-6">
+              <BookOpen className="h-8 w-8 text-gray-400 mx-auto mb-2" />
+              <h3 className="text-sm font-semibold text-gray-900 mb-1">No Resources Available</h3>
+              <p className="text-xs text-gray-600 mb-3">
+                Learning resources will be made available by your foundation.
+              </p>
+              <Button variant="outline" size="sm" className="h-7 text-xs">
+                Contact Administrator
+              </Button>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

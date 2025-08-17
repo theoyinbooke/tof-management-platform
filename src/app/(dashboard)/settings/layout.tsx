@@ -3,6 +3,7 @@
 import { usePathname } from "next/navigation";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import { useCurrentUser } from "@/hooks/use-current-user";
 import { 
   Building2, 
   Users, 
@@ -11,53 +12,76 @@ import {
   Shield, 
   CreditCard,
   FileText,
-  Palette
+  Palette,
+  Building
 } from "lucide-react";
 
-const settingsNavigation = [
-  {
-    name: "Foundation",
-    href: "/settings/foundation",
-    icon: Building2,
-    description: "Foundation details and configuration"
-  },
-  {
-    name: "Users",
-    href: "/settings/users", 
-    icon: Users,
-    description: "Manage team members and roles"
-  },
-  {
-    name: "Notifications",
-    href: "/settings/notifications",
-    icon: Bell,
-    description: "Email and SMS notification settings"
-  },
-  {
-    name: "Security",
-    href: "/settings/security",
-    icon: Shield,
-    description: "Security settings and audit logs"
-  },
-  {
-    name: "Billing",
-    href: "/settings/billing",
-    icon: CreditCard,
-    description: "Subscription and payment settings"
-  },
-  {
-    name: "Documents",
-    href: "/settings/documents",
-    icon: FileText,
-    description: "Document types and requirements"
-  },
-  {
-    name: "Appearance",
-    href: "/settings/appearance",
-    icon: Palette,
-    description: "Customize the platform appearance"
+const getSettingsNavigation = (isSuperAdmin: boolean) => {
+  const baseNavigation = [
+    {
+      name: "Foundation",
+      href: "/settings/foundation",
+      icon: Building2,
+      description: "Foundation details and configuration",
+      roles: ["admin", "super_admin"]
+    },
+    {
+      name: "Users",
+      href: "/settings/users", 
+      icon: Users,
+      description: "Manage team members and roles",
+      roles: ["admin", "super_admin"]
+    },
+    {
+      name: "Notifications",
+      href: "/settings/notifications",
+      icon: Bell,
+      description: "Email and SMS notification settings",
+      roles: ["admin", "super_admin"]
+    },
+    {
+      name: "Security",
+      href: "/settings/security",
+      icon: Shield,
+      description: "Security settings and audit logs",
+      roles: ["admin", "super_admin"]
+    },
+    {
+      name: "Billing",
+      href: "/settings/billing",
+      icon: CreditCard,
+      description: "Subscription and payment settings",
+      roles: ["admin", "super_admin"]
+    },
+    {
+      name: "Documents",
+      href: "/settings/documents",
+      icon: FileText,
+      description: "Document types and requirements",
+      roles: ["admin", "super_admin"]
+    },
+    {
+      name: "Appearance",
+      href: "/settings/appearance",
+      icon: Palette,
+      description: "Customize the platform appearance",
+      roles: ["admin", "super_admin"]
+    }
+  ];
+
+  // Add super admin only menu items
+  if (isSuperAdmin) {
+    baseNavigation.unshift({
+      name: "All Foundations",
+      href: "/settings/foundations",
+      icon: Building,
+      description: "Manage all foundations in the system",
+      roles: ["super_admin"]
+    });
   }
-];
+
+  return baseNavigation;
+};
 
 export default function SettingsLayout({
   children,
@@ -65,6 +89,9 @@ export default function SettingsLayout({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
+  const { isSuperAdmin } = useCurrentUser();
+  
+  const settingsNavigation = getSettingsNavigation(isSuperAdmin);
 
   return (
     <div className="container mx-auto p-6">
