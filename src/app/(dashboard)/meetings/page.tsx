@@ -12,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import {
   Dialog,
   DialogContent,
@@ -51,6 +52,8 @@ import {
   UserPlus,
   Edit,
   Trash2,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 import { Id } from "../../../../convex/_generated/dataModel";
 import { cn } from "@/lib/utils";
@@ -63,6 +66,9 @@ export default function MeetingsPage() {
   const [showInstantMeetingDialog, setShowInstantMeetingDialog] = useState(false);
   const [showJoinDialog, setShowJoinDialog] = useState(false);
   const [showCalendarView, setShowCalendarView] = useState(false);
+  const [showPastMeetings, setShowPastMeetings] = useState(false);
+  const [showMeetingDetails, setShowMeetingDetails] = useState(false);
+  const [selectedMeeting, setSelectedMeeting] = useState<any>(null);
   const [instantMeetingTitle, setInstantMeetingTitle] = useState("");
   const [meetingCodeToJoin, setMeetingCodeToJoin] = useState("");
   const [isCreating, setIsCreating] = useState(false);
@@ -116,6 +122,11 @@ export default function MeetingsPage() {
     router.push(`/meetings/${meetingId}/room`);
   };
 
+  // Handle join meeting via lobby
+  const handleJoinMeetingViaLobby = (meetingId: Id<"meetings">) => {
+    router.push(`/meetings/${meetingId}/lobby`);
+  };
+
   // Handle join with code
   const handleJoinWithCode = () => {
     if (!meetingCodeToJoin) {
@@ -147,14 +158,25 @@ export default function MeetingsPage() {
 
   const canManageMeetings = user?.role === "admin" || user?.role === "super_admin" || user?.role === "reviewer";
 
-  // Group meetings by status
+  // Group meetings by status and time
+  const now = Date.now();
   const liveMeetings = meetings?.filter(m => m.status === "live") || [];
-  const upcomingMeetings = meetings?.filter(m => m.status === "scheduled") || [];
-  const pastMeetings = meetings?.filter(m => m.status === "ended" || m.status === "cancelled") || [];
+  const upcomingMeetings = meetings?.filter(m => 
+    m.status === "scheduled" && m.scheduledEndTime > now
+  ) || [];
+  
+  // Past meetings: either explicitly ended/cancelled OR past their scheduled end time but still joinable
+  // Show only the 6 most recent past meetings
+  const pastMeetings = meetings?.filter(m => 
+    m.status === "ended" || 
+    m.status === "cancelled" || 
+    (m.scheduledEndTime <= now && m.status !== "live")
+  ).sort((a, b) => b.scheduledStartTime - a.scheduledStartTime) // Sort by most recent first
+   .slice(0, 6) || []; // Limit to 6 most recent
 
   return (
     <ProtectedRoute allowedRoles={["admin", "super_admin", "beneficiary", "guardian", "reviewer"]}>
-      <div className="container mx-auto p-6 space-y-6">
+      <div className="container mx-auto p-4 space-y-3">
         {/* Header */}
         <div>
           <h1 className="text-3xl font-bold">Meet</h1>
@@ -223,18 +245,45 @@ export default function MeetingsPage() {
           </Card>
         </div>
 
-        {/* Meeting Links Section */}
-        {liveMeetings.length > 0 && (
-          <div className="space-y-4">
+        {/* View Toggle */}
+        <div className="flex items-center justify-between py-2">
+          <h2 className="text-2xl font-bold">All meetings</h2>
+          <div className="flex items-center gap-3">
+            <Label htmlFor="calendar-toggle" className="text-sm font-medium cursor-pointer">
+              Calendar View
+            </Label>
+            <Switch
+              id="calendar-toggle"
+              checked={showCalendarView}
+              onCheckedChange={setShowCalendarView}
+            />
+          </div>
+        </div>
+
+        {showCalendarView ? (
+          <CalendarView
+            meetings={[...liveMeetings, ...upcomingMeetings, ...pastMeetings]}
+            onMeetingClick={(meeting) => {
+              // Show meeting details popup instead of directly joining
+              setSelectedMeeting(meeting);
+              setShowMeetingDetails(true);
+            }}
+            onBackToGrid={() => setShowCalendarView(false)}
+          />
+        ) : (
+          <>
+            {/* Live Meetings Section */}
+            {liveMeetings.length > 0 && (
+          <div className="space-y-2">
             <h2 className="text-xl font-semibold">Live Meetings</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
               {liveMeetings.map((meeting) => (
-                <Card key={meeting._id} className="hover:shadow-lg transition-all border-red-200 bg-red-50">
-                  <CardContent className="p-4">
-                    <div className="flex items-start justify-between mb-3">
-                      <div className="flex items-center gap-2">
-                        <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
-                        <h3 className="font-semibold line-clamp-1">{meeting.title}</h3>
+                <Card key={meeting._id} className="hover:shadow-lg transition-all border-red-200 bg-red-50 py-3">
+                  <CardContent className="p-2">
+                    <div className="flex items-start justify-between mb-1">
+                      <div className="flex items-start gap-2 flex-1 min-w-0">
+                        <div className="w-2 h-2 bg-red-500 rounded-full animate-pulse mt-1 flex-shrink-0" />
+                        <h3 className="text-sm font-medium line-clamp-2 leading-tight">{meeting.title}</h3>
                       </div>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
@@ -268,32 +317,34 @@ export default function MeetingsPage() {
                       </DropdownMenu>
                     </div>
                     
-                    <div className="space-y-2 text-sm text-gray-600 mb-4">
-                      <div className="flex items-center gap-2">
-                        <Users className="h-4 w-4" />
+                    <div className="space-y-0.5 text-xs text-gray-600 mb-2">
+                      <div className="flex items-center gap-1">
+                        <Users className="h-3 w-3" />
                         <span>{meeting.participantCount || 0} participants</span>
                       </div>
                       {meeting.host && (
-                        <div className="flex items-center gap-2">
+                        <div className="truncate">
                           <span>Host: {meeting.host.firstName} {meeting.host.lastName}</span>
                         </div>
                       )}
                     </div>
 
-                    <div className="flex gap-2">
+                    <div className="flex gap-1">
                       <Button 
-                        className="flex-1 bg-emerald-600 hover:bg-emerald-700"
+                        size="sm"
+                        className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-xs"
                         onClick={() => handleJoinMeeting(meeting._id)}
                       >
-                        Join Meeting
+                        Join
                       </Button>
                       <Button
-                        className="flex-1"
+                        size="sm"
+                        className="flex-1 text-xs"
                         variant="outline"
                         onClick={() => copyMeetingLink(meeting)}
                       >
-                        <Copy className="h-4 w-4 mr-2" />
-                        Copy Link
+                        <Copy className="h-3 w-3 mr-1" />
+                        Copy
                       </Button>
                     </div>
                   </CardContent>
@@ -303,40 +354,17 @@ export default function MeetingsPage() {
           </div>
         )}
 
-        {/* Scheduled Meetings */}
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold">Scheduled meetings</h2>
-            <Button 
-              variant="link" 
-              className="text-emerald-600"
-              onClick={() => setShowCalendarView(!showCalendarView)}
-            >
-              {showCalendarView ? "View as grid" : "View in calendar"}
-            </Button>
-          </div>
+            {/* Scheduled Meetings */}
+            <div className="space-y-2">
+              <h2 className="text-xl font-semibold">Scheduled meetings</h2>
 
-          {showCalendarView ? (
-            <CalendarView
-              meetings={upcomingMeetings}
-              onMeetingClick={(meeting) => {
-                // Handle meeting click - could open details or join
-                if (meeting.hostId === user?._id) {
-                  startMeeting({ meetingId: meeting._id as Id<"meetings"> });
-                  handleJoinMeeting(meeting._id as Id<"meetings">);
-                } else {
-                  toast.info("Meeting has not started yet");
-                }
-              }}
-              onBackToGrid={() => setShowCalendarView(false)}
-            />
-          ) : upcomingMeetings.length > 0 ? (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {upcomingMeetings.length > 0 ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
               {upcomingMeetings.map((meeting) => (
-                <Card key={meeting._id} className="hover:shadow-lg transition-all">
-                  <CardContent className="p-4">
-                    <div className="flex items-start justify-between mb-3">
-                      <h3 className="font-semibold line-clamp-1">{meeting.title}</h3>
+                <Card key={meeting._id} className="hover:shadow-lg transition-all py-3">
+                  <CardContent className="p-2">
+                    <div className="flex items-start justify-between mb-1">
+                      <h3 className="text-sm font-medium line-clamp-2 leading-tight flex-1 min-w-0">{meeting.title}</h3>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button
@@ -370,64 +398,300 @@ export default function MeetingsPage() {
                     </div>
                     
                     {meeting.description && (
-                      <p className="text-sm text-gray-600 line-clamp-2 mb-3">
+                      <p className="text-xs text-gray-600 line-clamp-1 mb-1">
                         {meeting.description}
                       </p>
                     )}
 
-                    <div className="space-y-2 text-sm text-gray-600 mb-4">
-                      <div className="flex items-center gap-2">
-                        <Calendar className="h-4 w-4" />
-                        <span>{format(new Date(meeting.scheduledStartTime), "PPP")}</span>
+                    <div className="space-y-0.5 text-xs text-gray-600 mb-2">
+                      <div className="flex items-center gap-1">
+                        <Calendar className="h-3 w-3" />
+                        <span className="truncate">{format(new Date(meeting.scheduledStartTime), "MMM d")}</span>
                       </div>
-                      <div className="flex items-center gap-2">
-                        <Clock className="h-4 w-4" />
-                        <span>{format(new Date(meeting.scheduledStartTime), "p")} - {format(new Date(meeting.scheduledEndTime), "p")}</span>
+                      <div className="flex items-center gap-1">
+                        <Clock className="h-3 w-3" />
+                        <span className="truncate">{format(new Date(meeting.scheduledStartTime), "p")}</span>
                       </div>
                     </div>
 
-                    <div className="flex gap-2">
+                    <div className="flex gap-1">
                       {meeting.hostId === user?._id ? (
                         <Button 
-                          className="flex-1 bg-emerald-600 hover:bg-emerald-700"
+                          size="sm"
+                          className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-xs"
                           onClick={() => {
                             startMeeting({ meetingId: meeting._id });
                             handleJoinMeeting(meeting._id);
                           }}
                         >
-                          Start Meeting
+                          Start
                         </Button>
                       ) : (
                         <Button 
-                          className="flex-1"
+                          size="sm"
+                          className="flex-1 text-xs"
                           variant="outline"
                           disabled
                         >
-                          Not started
+                          Pending
                         </Button>
                       )}
                       <Button
-                        className="flex-1"
+                        size="sm"
+                        className="flex-1 text-xs"
                         variant="outline"
                         onClick={() => copyMeetingLink(meeting)}
                       >
-                        <Copy className="h-4 w-4 mr-2" />
-                        Copy Link
+                        <Copy className="h-3 w-3 mr-1" />
+                        Copy
                       </Button>
                     </div>
                   </CardContent>
                 </Card>
               ))}
+                </div>
+              ) : (
+                <Card className="border-dashed">
+                  <CardContent className="p-12 text-center">
+                    <Calendar className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                    <p className="text-gray-600">You don't have anything scheduled.</p>
+                  </CardContent>
+                </Card>
+              )}
             </div>
-          ) : !showCalendarView ? (
-            <Card className="border-dashed">
-              <CardContent className="p-12 text-center">
-                <Calendar className="h-12 w-12 text-gray-400 mx-auto mb-4" />
-                <p className="text-gray-600">You don't have anything scheduled.</p>
-              </CardContent>
-            </Card>
-          ) : null}
-        </div>
+
+            {/* Past Meetings - Collapsible Section */}
+            {pastMeetings.length > 0 && (
+          <div className="space-y-2">
+            <div 
+              className="flex items-center justify-between cursor-pointer hover:bg-gray-50 p-2 rounded-lg transition-colors"
+              onClick={() => setShowPastMeetings(!showPastMeetings)}
+            >
+              <div className="flex items-center gap-2">
+                <h2 className="text-xl font-semibold">Past meetings ({pastMeetings.length}{pastMeetings.length === 6 ? ' recent' : ''})</h2>
+                {showPastMeetings ? (
+                  <ChevronDown className="h-5 w-5 text-gray-500" />
+                ) : (
+                  <ChevronRight className="h-5 w-5 text-gray-500" />
+                )}
+              </div>
+              <span className="text-sm text-gray-500">
+                {showPastMeetings ? "Hide" : "Show"} past meetings
+              </span>
+            </div>
+
+            {showPastMeetings && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
+                {pastMeetings.map((meeting) => {
+                  const isPastTime = meeting.scheduledEndTime <= now;
+                  const isExplicitlyEnded = meeting.status === "ended" || meeting.status === "cancelled";
+                  
+                  return (
+                    <Card key={meeting._id} className="hover:shadow-lg transition-all border-gray-300 bg-gray-50 py-3">
+                      <CardContent className="p-2">
+                        <div className="flex items-start justify-between mb-1">
+                          <div className="flex items-start gap-2 flex-1 min-w-0">
+                            <div className="w-2 h-2 bg-gray-400 rounded-full mt-1 flex-shrink-0" />
+                            <h3 className="text-sm font-medium line-clamp-2 leading-tight">{meeting.title}</h3>
+                          </div>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <MoreHorizontal className="h-4 w-4" />
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              <DropdownMenuItem 
+                                onClick={() => copyMeetingLink(meeting)}
+                              >
+                                <Copy className="h-4 w-4 mr-2" />
+                                Copy Link
+                              </DropdownMenuItem>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem 
+                                onClick={() => handleDeleteMeeting(meeting._id)}
+                                className="text-red-600"
+                              >
+                                <Trash2 className="h-4 w-4 mr-2" />
+                                Delete Meeting
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </div>
+                        
+                        {meeting.description && (
+                          <p className="text-xs text-gray-600 line-clamp-1 mb-1">
+                            {meeting.description}
+                          </p>
+                        )}
+
+                        <div className="space-y-0.5 text-xs text-gray-600 mb-2">
+                          <div className="flex items-center gap-1">
+                            <Calendar className="h-3 w-3" />
+                            <span className="truncate">{format(new Date(meeting.scheduledStartTime), "MMM d")}</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <Clock className="h-3 w-3" />
+                            <span className="truncate">{format(new Date(meeting.scheduledStartTime), "p")}</span>
+                          </div>
+                          {meeting.host && (
+                            <div className="truncate">
+                              <span>Host: {meeting.host.firstName} {meeting.host.lastName}</span>
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="flex gap-1">
+                          <Button 
+                            size="sm"
+                            className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-xs"
+                            onClick={() => handleJoinMeeting(meeting._id)}
+                          >
+                            Join
+                          </Button>
+                          <Button
+                            size="sm"
+                            className="flex-1 text-xs"
+                            variant="outline"
+                            onClick={() => copyMeetingLink(meeting)}
+                          >
+                            <Copy className="h-3 w-3 mr-1" />
+                            Copy
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+          </>
+        )}
+
+        {/* Meeting Details Dialog */}
+        <Dialog open={showMeetingDetails} onOpenChange={setShowMeetingDetails}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>{selectedMeeting?.title}</DialogTitle>
+              {selectedMeeting?.description && (
+                <DialogDescription>
+                  {selectedMeeting.description}
+                </DialogDescription>
+              )}
+            </DialogHeader>
+            
+            {selectedMeeting && (
+              <div className="space-y-4">
+                {/* Meeting Status Badge */}
+                <div className="flex items-center gap-2">
+                  <div className={cn(
+                    "w-2 h-2 rounded-full",
+                    selectedMeeting.status === "live" ? "bg-red-500 animate-pulse" :
+                    selectedMeeting.status === "scheduled" ? "bg-blue-500" :
+                    "bg-gray-400"
+                  )} />
+                  <Badge variant={
+                    selectedMeeting.status === "live" ? "destructive" :
+                    selectedMeeting.status === "scheduled" ? "default" :
+                    "secondary"
+                  }>
+                    {selectedMeeting.status === "live" ? "Live Now" :
+                     selectedMeeting.status === "scheduled" ? "Scheduled" :
+                     selectedMeeting.status === "ended" ? "Ended" :
+                     selectedMeeting.status === "cancelled" ? "Cancelled" :
+                     "Past Meeting"}
+                  </Badge>
+                </div>
+
+                {/* Meeting Details */}
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 text-sm">
+                    <Calendar className="h-4 w-4 text-gray-500" />
+                    <span>{format(new Date(selectedMeeting.scheduledStartTime), "PPP")}</span>
+                  </div>
+                  
+                  <div className="flex items-center gap-2 text-sm">
+                    <Clock className="h-4 w-4 text-gray-500" />
+                    <span>
+                      {format(new Date(selectedMeeting.scheduledStartTime), "p")} - {format(new Date(selectedMeeting.scheduledEndTime), "p")}
+                    </span>
+                  </div>
+
+                  {selectedMeeting.host && (
+                    <div className="flex items-center gap-2 text-sm">
+                      <Users className="h-4 w-4 text-gray-500" />
+                      <span>Host: {selectedMeeting.host.firstName} {selectedMeeting.host.lastName}</span>
+                    </div>
+                  )}
+
+                  {selectedMeeting.meetingCode && (
+                    <div className="flex items-center gap-2 text-sm">
+                      <span className="font-medium">Meeting ID:</span>
+                      <code className="bg-gray-100 px-2 py-1 rounded text-xs">
+                        {selectedMeeting.meetingCode}
+                      </code>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            <DialogFooter className="flex gap-2">
+              <Button variant="outline" onClick={() => setShowMeetingDetails(false)}>
+                Close
+              </Button>
+              
+              {selectedMeeting && (
+                <>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      copyMeetingLink(selectedMeeting);
+                      setShowMeetingDetails(false);
+                    }}
+                  >
+                    <Copy className="h-4 w-4 mr-2" />
+                    Copy Link
+                  </Button>
+                  
+                  {/* Join Button Logic */}
+                  {selectedMeeting.status === "scheduled" && selectedMeeting.hostId !== user?._id ? (
+                    <Button disabled>
+                      Not Started
+                    </Button>
+                  ) : selectedMeeting.status === "scheduled" && selectedMeeting.hostId === user?._id ? (
+                    <Button 
+                      className="bg-emerald-600 hover:bg-emerald-700"
+                      onClick={() => {
+                        startMeeting({ meetingId: selectedMeeting._id });
+                        handleJoinMeetingViaLobby(selectedMeeting._id);
+                        setShowMeetingDetails(false);
+                      }}
+                    >
+                      Start & Join Meeting
+                    </Button>
+                  ) : (
+                    <Button 
+                      className="bg-emerald-600 hover:bg-emerald-700"
+                      onClick={() => {
+                        handleJoinMeetingViaLobby(selectedMeeting._id);
+                        setShowMeetingDetails(false);
+                      }}
+                    >
+                      Join Meeting
+                    </Button>
+                  )}
+                </>
+              )}
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {/* Instant Meeting Dialog */}
         <Dialog open={showInstantMeetingDialog} onOpenChange={setShowInstantMeetingDialog}>

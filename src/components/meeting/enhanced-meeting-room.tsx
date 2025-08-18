@@ -26,8 +26,16 @@ import {
   UserPlus,
   Copy,
   Shield,
+  Circle,
+  Square,
+  Smile,
+  ThumbsUp,
+  Heart,
+  Laugh,
+  Angry,
+  Frown,
 } from "lucide-react";
-import { Room, RoomEvent, Track } from "livekit-client";
+import { Room, RoomEvent, Track, DataPacket_Kind, LocalParticipant } from "livekit-client";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
@@ -60,6 +68,25 @@ interface ChatMessage {
   timestamp: number;
 }
 
+interface EmojiReaction {
+  id: string;
+  emoji: string;
+  sender: string;
+  senderName: string;
+  timestamp: number;
+  x?: number; // For positioning animation
+  y?: number;
+}
+
+const EMOJI_REACTIONS = [
+  { emoji: "👍", label: "Thumbs up", icon: ThumbsUp },
+  { emoji: "👏", label: "Clap", icon: null },
+  { emoji: "❤️", label: "Love", icon: Heart },
+  { emoji: "😂", label: "Laugh", icon: Laugh },
+  { emoji: "😮", label: "Wow", icon: null },
+  { emoji: "😢", label: "Sad", icon: Frown },
+] as const;
+
 interface Participant {
   id: string;
   name: string;
@@ -89,9 +116,35 @@ export function EnhancedMeetingRoom({ meetingId, userName, userRole, initialSett
   const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [handRaised, setHandRaised] = useState(false);
   
+  // Recording state
+  const [isRecording, setIsRecording] = useState(false);
+  const [recordingStatus, setRecordingStatus] = useState<string>("idle");
+  
   // Screen sharing state
   const [screenShareTrack, setScreenShareTrack] = useState<any>(null);
   const [screenShareParticipant, setScreenShareParticipant] = useState<any>(null);
+
+  // Chat
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [newMessage, setNewMessage] = useState("");
+  const chatScrollRef = useRef<HTMLDivElement>(null);
+
+  // Reactions
+  const [reactions, setReactions] = useState<EmojiReaction[]>([]);
+  const [showReactionPicker, setShowReactionPicker] = useState(false);
+
+  // Convex queries and mutations (declare early)
+  const leaveMeeting = useMutation(api.meetings.leaveMeeting);
+  const endCurrentSessionMutation = useMutation(api.meetings.endCurrentSession);
+  const generateTokenAction = useAction(api.livekit.generateToken);
+  const terminateRoomAction = useAction(api.livekit.terminateRoom);
+  
+  // Recording mutations and queries
+  const recordingData = useQuery(api.meetings.getRecordingStatus, { meetingId });
+  const startRecordingMutation = useMutation(api.meetings.startMeetingRecording);
+  const stopRecordingMutation = useMutation(api.meetings.stopMeetingRecording);
+  const startRecordingAction = useAction(api.livekit.startRecording);
+  const stopRecordingAction = useAction(api.livekit.stopRecording);
   
   // Debug: Log screen share state changes
   useEffect(() => {
@@ -102,10 +155,30 @@ export function EnhancedMeetingRoom({ meetingId, userName, userRole, initialSett
     });
   }, [screenShareTrack, screenShareParticipant, isScreenSharing]);
 
-  // Chat
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-  const [newMessage, setNewMessage] = useState("");
-  const chatScrollRef = useRef<HTMLDivElement>(null);
+  // Sync recording status
+  useEffect(() => {
+    if (recordingData) {
+      setIsRecording(recordingData.recordingStatus === "recording");
+      setRecordingStatus(recordingData.recordingStatus);
+    }
+  }, [recordingData]);
+
+  // Close reaction picker when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (showReactionPicker) {
+        const target = event.target as HTMLElement;
+        if (!target.closest('.reaction-picker') && !target.closest('.reaction-button')) {
+          setShowReactionPicker(false);
+        }
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showReactionPicker]);
 
   // Participants (mock data for now)
   const [participants, setParticipants] = useState<Participant[]>([
@@ -124,13 +197,9 @@ export function EnhancedMeetingRoom({ meetingId, userName, userRole, initialSett
   const participantThumbnailsContainer = useRef<HTMLDivElement>(null);
   const roomRef = useRef<any>(null);
 
-  // Convex queries and mutations
+  // Additional Convex queries
   const meeting = useQuery(api.meetings.getMeeting, { meetingId });
   const joinMeeting = useMutation(api.meetings.joinMeeting);
-  const leaveMeeting = useMutation(api.meetings.leaveMeeting);
-  const endCurrentSessionMutation = useMutation(api.meetings.endCurrentSession);
-  const generateTokenAction = useAction(api.livekit.generateToken);
-  const terminateRoomAction = useAction(api.livekit.terminateRoom);
 
   // Ensure proper mounting and cleanup
   useEffect(() => {
@@ -324,6 +393,39 @@ export function EnhancedMeetingRoom({ meetingId, userName, userRole, initialSett
 
       room.on(RoomEvent.Disconnected, () => {
         handleDisconnected();
+      });
+
+      // Handle incoming data messages (reactions)
+      room.on(RoomEvent.DataReceived, (payload: Uint8Array, participant, kind) => {
+        if (kind === DataPacket_Kind.RELIABLE) {
+          try {
+            const decoder = new TextDecoder();
+            const message = JSON.parse(decoder.decode(payload));
+            
+            if (message.type === 'emoji_reaction') {
+              const reaction: EmojiReaction = {
+                id: `${participant?.identity || 'unknown'}_${Date.now()}_${Math.random()}`,
+                emoji: message.emoji,
+                sender: participant?.identity || 'unknown',
+                senderName: participant?.name || participant?.identity || 'Unknown',
+                timestamp: Date.now(),
+                x: Math.random() * 300 + 50, // Random position for animation
+                y: Math.random() * 200 + 100,
+              };
+              
+              setReactions(prev => [...prev, reaction]);
+              
+              // Remove reaction after animation
+              setTimeout(() => {
+                setReactions(prev => prev.filter(r => r.id !== reaction.id));
+              }, 3000);
+              
+              console.log(`Reaction received: ${reaction.emoji} from ${reaction.senderName}`);
+            }
+          } catch (error) {
+            console.error('Failed to parse data message:', error);
+          }
+        }
       });
 
       // Track media state changes
@@ -592,6 +694,111 @@ export function EnhancedMeetingRoom({ meetingId, userName, userRole, initialSett
     toast.success(handRaised ? "Hand lowered" : "Hand raised");
   };
 
+  const startRecording = async () => {
+    if (!meeting) return;
+    
+    try {
+      setRecordingStatus("starting");
+      
+      // Start recording in database
+      const result = await startRecordingMutation({ meetingId });
+      
+      if (result.success) {
+        // Start LiveKit recording
+        const livekitResult = await startRecordingAction({
+          roomName: result.roomName,
+          meetingId: meetingId,
+        });
+        
+        if (livekitResult.success) {
+          // Update the meeting with LiveKit egress ID
+          setRecordingStatus("recording");
+          setIsRecording(true);
+          toast.success("Recording started successfully");
+        } else {
+          throw new Error(livekitResult.error || "Failed to start LiveKit recording");
+        }
+      }
+    } catch (error) {
+      console.error("Failed to start recording:", error);
+      setRecordingStatus("idle");
+      setIsRecording(false);
+      toast.error("Failed to start recording");
+    }
+  };
+
+  const stopRecording = async () => {
+    if (!recordingStatus?.recordingEgressId) return;
+    
+    try {
+      setRecordingStatus("stopping");
+      
+      // Stop LiveKit recording
+      const livekitResult = await stopRecordingAction({
+        egressId: recordingStatus.recordingEgressId,
+      });
+      
+      if (livekitResult.success) {
+        // Stop recording in database
+        await stopRecordingMutation({ meetingId });
+        
+        setRecordingStatus("completed");
+        setIsRecording(false);
+        toast.success("Recording stopped successfully");
+      } else {
+        throw new Error(livekitResult.error || "Failed to stop LiveKit recording");
+      }
+    } catch (error) {
+      console.error("Failed to stop recording:", error);
+      toast.error("Failed to stop recording");
+    }
+  };
+
+  // Reaction functions
+  const sendReaction = async (emoji: string) => {
+    if (!roomRef.current) return;
+    
+    try {
+      const reactionMessage = {
+        type: 'emoji_reaction',
+        emoji: emoji,
+        timestamp: Date.now(),
+      };
+      
+      const encoder = new TextEncoder();
+      const data = encoder.encode(JSON.stringify(reactionMessage));
+      
+      // Send reaction to all participants
+      await roomRef.current.localParticipant.publishData(data, DataPacket_Kind.RELIABLE);
+      
+      // Add to local reactions immediately for instant feedback
+      const localReaction: EmojiReaction = {
+        id: `local_${Date.now()}_${Math.random()}`,
+        emoji: emoji,
+        sender: roomRef.current.localParticipant.identity,
+        senderName: userName,
+        timestamp: Date.now(),
+        x: Math.random() * 300 + 50,
+        y: Math.random() * 200 + 100,
+      };
+      
+      setReactions(prev => [...prev, localReaction]);
+      
+      // Remove after animation
+      setTimeout(() => {
+        setReactions(prev => prev.filter(r => r.id !== localReaction.id));
+      }, 3000);
+      
+      // Close reaction picker
+      setShowReactionPicker(false);
+      
+      console.log(`Sent reaction: ${emoji}`);
+    } catch (error) {
+      console.error('Failed to send reaction:', error);
+      toast.error('Failed to send reaction');
+    }
+  };
+
   // Chat functions
   const sendMessage = () => {
     if (!newMessage.trim()) return;
@@ -715,6 +922,52 @@ export function EnhancedMeetingRoom({ meetingId, userName, userRole, initialSett
     const meetingLink = `${window.location.origin}/meetings/${meetingId}/room`;
     navigator.clipboard.writeText(meetingLink);
     toast.success("Meeting link copied to clipboard");
+  };
+
+  // Reaction Animation Component
+  const ReactionAnimation = ({ reaction }: { reaction: EmojiReaction }) => {
+    return (
+      <div
+        key={reaction.id}
+        className="absolute pointer-events-none z-50 animate-pulse"
+        style={{
+          left: `${reaction.x}px`,
+          top: `${reaction.y}px`,
+          animation: 'reactionFloat 3s ease-out forwards',
+        }}
+      >
+        <div className="bg-white/90 backdrop-blur-sm rounded-full px-3 py-2 shadow-lg border">
+          <div className="flex items-center gap-2">
+            <span className="text-2xl">{reaction.emoji}</span>
+            <span className="text-xs font-medium text-gray-700">{reaction.senderName}</span>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // Reaction Picker Component
+  const ReactionPicker = () => {
+    if (!showReactionPicker) return null;
+
+    return (
+      <div className="reaction-picker absolute bottom-16 left-1/2 transform -translate-x-1/2 bg-white rounded-2xl shadow-xl border border-gray-200 p-2 z-50">
+        <div className="flex items-center gap-1">
+          {EMOJI_REACTIONS.map((reaction, index) => (
+            <button
+              key={index}
+              onClick={() => sendReaction(reaction.emoji)}
+              className="p-3 hover:bg-gray-100 rounded-xl transition-colors duration-200 flex flex-col items-center gap-1"
+              title={reaction.label}
+            >
+              <span className="text-2xl">{reaction.emoji}</span>
+              <span className="text-xs text-gray-600 font-medium">{reaction.label}</span>
+            </button>
+          ))}
+        </div>
+        <div className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 w-4 h-4 bg-white border-r border-b border-gray-200 rotate-45"></div>
+      </div>
+    );
   };
 
   // Screen Share Display Component
@@ -860,6 +1113,25 @@ export function EnhancedMeetingRoom({ meetingId, userName, userRole, initialSett
             <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full mr-1 animate-pulse" />
             Live
           </Badge>
+          {/* Recording Status Indicator */}
+          {isRecording && (
+            <Badge className="bg-red-100 text-red-700 border-red-200 text-xs">
+              <Circle className="w-2 h-2 fill-red-600 mr-1 animate-pulse" />
+              Recording
+            </Badge>
+          )}
+          {recordingData?.recordingStatus === "starting" && (
+            <Badge className="bg-orange-100 text-orange-700 border-orange-200 text-xs">
+              <Circle className="w-2 h-2 fill-orange-600 mr-1 animate-spin" />
+              Starting...
+            </Badge>
+          )}
+          {recordingData?.recordingStatus === "stopping" && (
+            <Badge className="bg-orange-100 text-orange-700 border-orange-200 text-xs">
+              <Square className="w-2 h-2 fill-orange-600 mr-1" />
+              Stopping...
+            </Badge>
+          )}
         </div>
         
         <div className="flex items-center gap-1">
@@ -1071,8 +1343,18 @@ export function EnhancedMeetingRoom({ meetingId, userName, userRole, initialSett
         )}
       </div>
 
+      {/* Reaction Animations Overlay */}
+      <div className="absolute inset-0 pointer-events-none z-40">
+        {reactions.map((reaction) => (
+          <ReactionAnimation key={reaction.id} reaction={reaction} />
+        ))}
+      </div>
+
       {/* Bottom Controls - Stick to bottom */}
-      <div className="bg-white border-t border-gray-200 p-3 flex-shrink-0">
+      <div className="bg-white border-t border-gray-200 p-3 flex-shrink-0 relative">
+        {/* Reaction Picker */}
+        <ReactionPicker />
+        
         <div className="flex items-center justify-center max-w-full relative">
           {/* Main Controls - Centered */}
           <div className="flex items-center gap-3">
@@ -1110,6 +1392,36 @@ export function EnhancedMeetingRoom({ meetingId, userName, userRole, initialSett
               className="rounded-full h-12 w-12 p-0"
             >
               <Hand className="h-5 w-5" />
+            </Button>
+
+            {/* Recording Button - Only show for hosts and admins */}
+            {recordingStatus?.canStartRecording || recordingStatus?.canStopRecording ? (
+              <Button
+                onClick={isRecording ? stopRecording : startRecording}
+                variant={isRecording ? "destructive" : "secondary"}
+                size="lg"
+                className={cn(
+                  "rounded-full h-12 w-12 p-0",
+                  isRecording && "bg-red-600 hover:bg-red-700 animate-pulse"
+                )}
+                disabled={recordingData?.recordingStatus === "starting" || recordingData?.recordingStatus === "stopping"}
+              >
+                {isRecording ? (
+                  <Square className="h-5 w-5" />
+                ) : (
+                  <Circle className="h-5 w-5" />
+                )}
+              </Button>
+            ) : null}
+
+            {/* Reaction Button */}
+            <Button
+              onClick={() => setShowReactionPicker(!showReactionPicker)}
+              variant="secondary"
+              size="lg"
+              className="reaction-button rounded-full h-12 w-12 p-0"
+            >
+              <Smile className="h-5 w-5" />
             </Button>
           </div>
 

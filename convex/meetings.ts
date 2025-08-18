@@ -104,7 +104,7 @@ export const createMeeting = mutation({
       password: args.password,
       waitingRoomEnabled: args.waitingRoomEnabled ?? false,
       maxParticipants: args.maxParticipants,
-      recordingEnabled: args.recordingEnabled ?? false,
+      recordingEnabled: args.recordingEnabled ?? true,
       chatEnabled: true,
       screenShareEnabled: true,
       whiteboardEnabled: true,
@@ -169,7 +169,7 @@ export const createInstantMeeting = mutation({
       hostId: user._id,
       coHosts: [],
       waitingRoomEnabled: false,
-      recordingEnabled: false,
+      recordingEnabled: true,
       chatEnabled: true,
       screenShareEnabled: true,
       whiteboardEnabled: true,
@@ -325,8 +325,18 @@ export const joinMeeting = mutation({
     const isHostOrCoHost = meeting.hostId === user._id || meeting.coHosts.includes(user._id);
     
     // Check if meeting duration has elapsed
-    if (now > meeting.scheduledEndTime) {
+    // Allow hosts and co-hosts to join expired meetings (for flexibility)
+    if (now > meeting.scheduledEndTime && !isHostOrCoHost) {
       throw new Error("Meeting has ended. The scheduled duration has elapsed.");
+    }
+    
+    // For hosts/co-hosts joining expired meetings, extend the duration automatically
+    if (now > meeting.scheduledEndTime && isHostOrCoHost && meeting.status !== "ended") {
+      // Extend meeting by 2 hours from current time
+      await ctx.db.patch(meeting._id, {
+        scheduledEndTime: now + (2 * 60 * 60 * 1000),
+        updatedAt: now,
+      });
     }
     
     // Allow joining if:
@@ -866,5 +876,324 @@ export const updateParticipantStatus = mutation({
     await ctx.db.patch(participant._id, updates);
 
     return { success: true };
+  },
+});
+
+/**
+ * Start recording a meeting
+ */
+export const startMeetingRecording = mutation({
+  args: {
+    meetingId: v.id("meetings"),
+  },
+  handler: async (ctx, args) => {
+    // Get meeting first to get foundation context
+    const meeting = await ctx.db.get(args.meetingId);
+    if (!meeting) throw new Error("Meeting not found");
+    
+    // Authenticate user with proper foundation context
+    const user = await authenticateAndAuthorize(ctx, meeting.foundationId, ["super_admin", "admin"]);
+    
+    // Check if user has permission (host, co-host, or admin)
+    if (meeting.hostId !== user._id && 
+        !meeting.coHosts.includes(user._id) && 
+        user.role !== "admin" && 
+        user.role !== "super_admin") {
+      throw new Error("Only hosts and admins can start recording");
+    }
+    
+    // Check if meeting is live
+    if (meeting.status !== "live") {
+      throw new Error("Meeting must be live to start recording");
+    }
+    
+    // Check if already recording
+    if (meeting.recordingStatus === "recording" || meeting.recordingStatus === "starting") {
+      throw new Error("Recording is already active");
+    }
+    
+    // Update meeting status to starting
+    await ctx.db.patch(args.meetingId, {
+      recordingStatus: "starting",
+      recordingStartedAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+    
+    // Create audit log
+    await ctx.db.insert("auditLogs", {
+      foundationId: meeting.foundationId,
+      userId: user._id,
+      userEmail: user.email,
+      userRole: user.role,
+      action: "start_recording",
+      entityType: "meetings",
+      entityId: args.meetingId,
+      description: `Started recording for meeting: ${meeting.title}`,
+      riskLevel: "medium",
+      createdAt: Date.now(),
+    });
+    
+    return { 
+      success: true, 
+      meetingId: args.meetingId,
+      roomName: meeting.roomName,
+      recordingStatus: "starting"
+    };
+  },
+});
+
+/**
+ * Stop recording a meeting
+ */
+export const stopMeetingRecording = mutation({
+  args: {
+    meetingId: v.id("meetings"),
+  },
+  handler: async (ctx, args) => {
+    // Get meeting first to get foundation context
+    const meeting = await ctx.db.get(args.meetingId);
+    if (!meeting) throw new Error("Meeting not found");
+    
+    // Authenticate user with proper foundation context
+    const user = await authenticateAndAuthorize(ctx, meeting.foundationId, ["super_admin", "admin"]);
+    
+    // Check if user has permission (host, co-host, or admin)
+    if (meeting.hostId !== user._id && 
+        !meeting.coHosts.includes(user._id) && 
+        user.role !== "admin" && 
+        user.role !== "super_admin") {
+      throw new Error("Only hosts and admins can stop recording");
+    }
+    
+    // Check if recording is active
+    if (meeting.recordingStatus !== "recording") {
+      throw new Error("No active recording to stop");
+    }
+    
+    // Update meeting status to stopping
+    await ctx.db.patch(args.meetingId, {
+      recordingStatus: "stopping",
+      updatedAt: Date.now(),
+    });
+    
+    // Create audit log
+    await ctx.db.insert("auditLogs", {
+      foundationId: meeting.foundationId,
+      userId: user._id,
+      userEmail: user.email,
+      userRole: user.role,
+      action: "stop_recording",
+      entityType: "meetings",
+      entityId: args.meetingId,
+      description: `Stopped recording for meeting: ${meeting.title}`,
+      riskLevel: "medium",
+      createdAt: Date.now(),
+    });
+    
+    return { 
+      success: true, 
+      meetingId: args.meetingId,
+      recordingEgressId: meeting.recordingEgressId,
+      recordingStatus: "stopping"
+    };
+  },
+});
+
+/**
+ * Update recording status (internal function called by LiveKit webhook/action)
+ */
+export const updateRecordingStatus = internalMutation({
+  args: {
+    meetingId: v.id("meetings"),
+    recordingStatus: v.union(
+      v.literal("idle"),
+      v.literal("starting"),
+      v.literal("recording"),
+      v.literal("stopping"), 
+      v.literal("completed"),
+      v.literal("failed")
+    ),
+    egressId: v.optional(v.string()),
+    recordingUrl: v.optional(v.string()),
+    recordingFilename: v.optional(v.string()),
+    recordingDuration: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const updates: any = {
+      recordingStatus: args.recordingStatus,
+      updatedAt: Date.now(),
+    };
+    
+    if (args.egressId) updates.recordingEgressId = args.egressId;
+    if (args.recordingUrl) updates.recordingUrl = args.recordingUrl;
+    if (args.recordingFilename) updates.recordingFilename = args.recordingFilename;
+    if (args.recordingDuration) updates.recordingDuration = args.recordingDuration;
+    
+    if (args.recordingStatus === "recording") {
+      updates.recordingStartedAt = Date.now();
+    } else if (args.recordingStatus === "completed" || args.recordingStatus === "failed") {
+      updates.recordingEndedAt = Date.now();
+    }
+    
+    await ctx.db.patch(args.meetingId, updates);
+    
+    return { success: true };
+  },
+});
+
+/**
+ * Get recording status for a meeting
+ */
+export const getRecordingStatus = query({
+  args: {
+    meetingId: v.id("meetings"),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) return null;
+    
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_id", (q) => q.eq("clerkId", identity.subject))
+      .unique();
+    
+    if (!user) return null;
+    
+    const meeting = await ctx.db.get(args.meetingId);
+    if (!meeting) return null;
+    
+    // Check access to meeting
+    if (meeting.foundationId !== user.foundationId && 
+        user.role !== "super_admin") {
+      return null;
+    }
+    
+    return {
+      recordingStatus: meeting.recordingStatus || "idle",
+      recordingEgressId: meeting.recordingEgressId,
+      recordingUrl: meeting.recordingUrl,
+      recordingFilename: meeting.recordingFilename,
+      recordingDuration: meeting.recordingDuration,
+      recordingStartedAt: meeting.recordingStartedAt,
+      recordingEndedAt: meeting.recordingEndedAt,
+      canStartRecording: (meeting.hostId === user._id || 
+                          meeting.coHosts.includes(user._id) || 
+                          user.role === "admin" || 
+                          user.role === "super_admin") &&
+                         meeting.status === "live" &&
+                         meeting.recordingEnabled &&
+                         (meeting.recordingStatus === "idle" || 
+                          meeting.recordingStatus === "completed" || 
+                          meeting.recordingStatus === "failed"),
+      canStopRecording: (meeting.hostId === user._id || 
+                         meeting.coHosts.includes(user._id) || 
+                         user.role === "admin" || 
+                         user.role === "super_admin") &&
+                        meeting.recordingEnabled &&
+                        meeting.recordingStatus === "recording",
+    };
+  },
+});
+
+/**
+ * Extend meeting duration (host/co-host only)
+ */
+export const extendMeetingDuration = mutation({
+  args: {
+    meetingId: v.id("meetings"),
+    additionalMinutes: v.optional(v.number()), // Default to 60 minutes
+  },
+  handler: async (ctx, args) => {
+    // Get meeting first to get foundation context
+    const meeting = await ctx.db.get(args.meetingId);
+    if (!meeting) throw new Error("Meeting not found");
+    
+    // Authenticate user with proper foundation context
+    const user = await authenticateAndAuthorize(ctx, meeting.foundationId, ["super_admin", "admin"]);
+    
+    // Check if user has permission (host, co-host, or admin)
+    const isHostOrCoHost = meeting.hostId === user._id || meeting.coHosts.includes(user._id);
+    const isAdmin = user.role === "admin" || user.role === "super_admin";
+    
+    if (!isHostOrCoHost && !isAdmin) {
+      throw new Error("Only hosts, co-hosts, or admins can extend meeting duration");
+    }
+    
+    // Check if meeting is not already ended
+    if (meeting.status === "ended") {
+      throw new Error("Cannot extend duration of an ended meeting");
+    }
+    
+    const now = Date.now();
+    const extensionTime = (args.additionalMinutes || 60) * 60 * 1000; // Default 60 minutes
+    const newEndTime = Math.max(meeting.scheduledEndTime, now) + extensionTime;
+    
+    // Update meeting with extended duration
+    await ctx.db.patch(args.meetingId, {
+      scheduledEndTime: newEndTime,
+      updatedAt: now,
+    });
+    
+    // Create audit log
+    await ctx.db.insert("auditLogs", {
+      foundationId: meeting.foundationId,
+      userId: user._id,
+      userEmail: user.email,
+      userRole: user.role,
+      action: "extend_meeting_duration",
+      entityType: "meetings",
+      entityId: args.meetingId,
+      description: `Extended meeting duration by ${args.additionalMinutes || 60} minutes`,
+      riskLevel: "low",
+      createdAt: now,
+    });
+    
+    return {
+      success: true,
+      newEndTime,
+      extensionMinutes: args.additionalMinutes || 60,
+    };
+  },
+});
+
+/**
+ * Enable recording for all existing meetings (migration utility)
+ * Can be called once to update existing meetings
+ */
+export const enableRecordingForAllMeetings = mutation({
+  args: {},
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Not authenticated");
+    
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_id", (q) => q.eq("clerkId", identity.subject))
+      .unique();
+    
+    if (!user || user.role !== "super_admin") {
+      throw new Error("Only super admins can run this migration");
+    }
+    
+    // Get all meetings where recordingEnabled is false or undefined
+    const meetings = await ctx.db
+      .query("meetings")
+      .filter(q => q.eq(q.field("recordingEnabled"), false))
+      .collect();
+    
+    let updatedCount = 0;
+    
+    for (const meeting of meetings) {
+      await ctx.db.patch(meeting._id, {
+        recordingEnabled: true,
+      });
+      updatedCount++;
+    }
+    
+    return {
+      success: true,
+      updatedCount,
+      message: `Successfully enabled recording for ${updatedCount} meetings`,
+    };
   },
 });

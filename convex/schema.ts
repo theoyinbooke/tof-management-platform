@@ -2191,6 +2191,18 @@ export default defineSchema({
     // Recording
     recordingUrl: v.optional(v.string()),
     recordingDuration: v.optional(v.number()),
+    recordingStatus: v.optional(v.union(
+      v.literal("idle"),
+      v.literal("starting"),
+      v.literal("recording"),
+      v.literal("stopping"), 
+      v.literal("completed"),
+      v.literal("failed")
+    )),
+    recordingEgressId: v.optional(v.string()), // LiveKit Egress ID for tracking
+    recordingStartedAt: v.optional(v.number()),
+    recordingEndedAt: v.optional(v.number()),
+    recordingFilename: v.optional(v.string()),
     
     // Meeting Link
     meetingLink: v.optional(v.string()), // Persistent meeting link
