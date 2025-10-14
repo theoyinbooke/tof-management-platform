@@ -25,9 +25,10 @@ export const getCurrentUserOrCreate = mutation({
     if (!user) {
       console.log(`Creating new user for Clerk ID: ${args.clerkId}`);
       
-      // Check if this is the first user in the system
-      const userCount = await ctx.db.query("users").collect();
-      const isFirstUser = userCount.length === 0;
+      try {
+        // Check if this is the first user in the system
+        const userCount = await ctx.db.query("users").collect();
+        const isFirstUser = userCount.length === 0;
 
       // Create or find foundation
       let foundationId: Id<"foundations"> | null = null;
@@ -73,30 +74,38 @@ export const getCurrentUserOrCreate = mutation({
         updatedAt: Date.now(),
       };
       
-      if (foundationId) {
-        userInsert.foundationId = foundationId;
-      }
-      
-      const userId = await ctx.db.insert("users", userInsert);
+        if (foundationId) {
+          userInsert.foundationId = foundationId;
+        }
+        
+        const userId = await ctx.db.insert("users", userInsert);
 
-      // Create audit log
-      if (foundationId) {
-        await ctx.db.insert("auditLogs", {
-          foundationId,
-          userId,
-          userEmail: args.email,
-          userRole: userInsert.role,
-          action: "user_created",
-          entityType: "users",
-          entityId: userId,
-          description: `New user account created for ${args.firstName} ${args.lastName}`,
-          riskLevel: isFirstUser || isAdminEmail ? "critical" : "low",
-          createdAt: Date.now(),
-        });
-      }
+        // Create audit log
+        if (foundationId) {
+          await ctx.db.insert("auditLogs", {
+            foundationId,
+            userId,
+            userEmail: args.email,
+            userRole: userInsert.role,
+            action: "user_created",
+            entityType: "users",
+            entityId: userId,
+            description: `New user account created for ${args.firstName} ${args.lastName}`,
+            riskLevel: isFirstUser || isAdminEmail ? "critical" : "low",
+            createdAt: Date.now(),
+          });
+        }
 
-      // Fetch the created user
-      user = await ctx.db.get(userId);
+        // Fetch the created user
+        user = await ctx.db.get(userId);
+      } catch (error) {
+        console.log(`User creation failed, possibly due to race condition. Trying to fetch existing user for: ${args.clerkId}`);
+        // If creation failed (possibly due to race condition), try to get the user again
+        user = await ctx.db
+          .query("users")
+          .withIndex("by_clerk_id", (q) => q.eq("clerkId", args.clerkId))
+          .unique();
+      }
     }
 
     if (!user || !user.isActive) {

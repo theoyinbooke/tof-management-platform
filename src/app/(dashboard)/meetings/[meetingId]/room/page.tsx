@@ -66,26 +66,31 @@ export default function MeetingRoomPage() {
     router.push("/meetings");
   };
 
+  // Ensure we have a stable key for React rendering
+  const roomKey = `room-${meetingId}-${hasJoinedFromLobby}`;
+
   return (
     <ProtectedRoute allowedRoles={["admin", "super_admin", "beneficiary", "guardian", "reviewer"]}>
-      {!hasJoinedFromLobby ? (
-        // Show lobby first
-        <MeetingLobby
-          meeting={meeting}
-          userName={userName}
-          onJoin={handleJoinFromLobby}
-          onCancel={handleCancelFromLobby}
-          isJoining={isJoining}
-        />
-      ) : (
-        // Show meeting room after joining from lobby
-        <EnhancedMeetingRoom
-          meetingId={meetingId}
-          userName={userName}
-          userRole={userRole as "host" | "co_host" | "moderator" | "participant"}
-          initialSettings={meetingSettings}
-        />
-      )}
+      <div key={roomKey}>
+        {!hasJoinedFromLobby ? (
+          // Show lobby first
+          <MeetingLobby
+            meeting={meeting}
+            userName={userName}
+            onJoin={handleJoinFromLobby}
+            onCancel={handleCancelFromLobby}
+            isJoining={isJoining}
+          />
+        ) : (
+          // Show meeting room after joining from lobby
+          <EnhancedMeetingRoom
+            meetingId={meetingId}
+            userName={userName}
+            userRole={userRole as "host" | "co_host" | "moderator" | "participant"}
+            initialSettings={meetingSettings}
+          />
+        )}
+      </div>
     </ProtectedRoute>
   );
 }

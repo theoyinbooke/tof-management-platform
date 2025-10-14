@@ -28,10 +28,10 @@ export function Header() {
   const { theme, setTheme } = useTheme();
   const [searchQuery, setSearchQuery] = useState("");
 
-  // Extract meeting ID from pathname if it's a meeting room
+  // Extract meeting ID from pathname if it's a meeting room or details page
   const getMeetingIdFromPath = () => {
     const segments = pathname.split("/").filter(Boolean);
-    if (segments[0] === "meetings" && segments[1] && segments[2] === "room") {
+    if (segments[0] === "meetings" && segments[1] && (segments[2] === "room" || segments[2] === "details")) {
       return segments[1] as Id<"meetings">;
     }
     return null;
@@ -39,20 +39,25 @@ export function Header() {
 
   const meetingId = getMeetingIdFromPath();
   
-  // Temporarily disable meeting query until Convex access is resolved
-  const meeting = null;
+  // Query meeting data if we're in a meeting room or details page
+  const meeting = useQuery(
+    api.meetings.getMeeting,
+    meetingId ? { meetingId } : "skip"
+  );
 
   // Get page title based on pathname
   const getPageTitle = () => {
     const segments = pathname.split("/").filter(Boolean);
     if (segments.length === 0) return "Dashboard";
     
-    // Special handling for meeting rooms
-    if (segments[0] === "meetings" && segments[1] && segments[2] === "room") {
+    // Special handling for meeting rooms and details pages
+    if (segments[0] === "meetings" && segments[1] && (segments[2] === "room" || segments[2] === "details")) {
       if (meeting) {
-        return `Meetings > ${meeting.title}`;
+        const pageType = segments[2] === "room" ? "" : " > Details";
+        return `Meetings > ${meeting.title}${pageType}`;
       } else {
-        return "Meetings > Meeting Room";
+        const pageType = segments[2] === "room" ? "Meeting Room" : "Meeting Details";
+        return `Meetings > ${pageType}`;
       }
     }
     

@@ -82,6 +82,7 @@ export default function MeetingsPage() {
 
   const createInstantMeeting = useMutation(api.meetings.createInstantMeeting);
   const startMeeting = useMutation(api.meetings.startMeeting);
+  const endMeeting = useMutation(api.meetings.endMeeting);
   const deleteMeeting = useMutation(api.meetings.deleteMeeting);
 
   // Handle create instant meeting
@@ -142,6 +143,17 @@ export default function MeetingsPage() {
     const link = meeting.meetingLink || `${window.location.origin}/meetings/${meeting._id}/room`;
     navigator.clipboard.writeText(link);
     toast.success("Meeting link copied!");
+  };
+
+  // Handle end meeting
+  const handleEndMeeting = async (meetingId: Id<"meetings">) => {
+    try {
+      await endMeeting({ meetingId });
+      toast.success("Meeting ended successfully");
+    } catch (error: any) {
+      console.error("Failed to end meeting:", error);
+      toast.error(error.message || "Failed to end meeting");
+    }
   };
 
   // Handle delete meeting
@@ -278,7 +290,11 @@ export default function MeetingsPage() {
             <h2 className="text-xl font-semibold">Live Meetings</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
               {liveMeetings.map((meeting) => (
-                <Card key={meeting._id} className="hover:shadow-lg transition-all border-red-200 bg-red-50 py-3">
+                <Card 
+                  key={meeting._id} 
+                  className="hover:shadow-lg transition-all border-red-200 bg-red-50 py-3 cursor-pointer"
+                  onClick={() => router.push(`/meetings/${meeting._id}/details`)}
+                >
                   <CardContent className="p-2">
                     <div className="flex items-start justify-between mb-1">
                       <div className="flex items-start gap-2 flex-1 min-w-0">
@@ -297,7 +313,17 @@ export default function MeetingsPage() {
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem 
-                            onClick={() => {
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              router.push(`/meetings/${meeting._id}/details`);
+                            }}
+                          >
+                            <Video className="h-4 w-4 mr-2" />
+                            View Details
+                          </DropdownMenuItem>
+                          <DropdownMenuItem 
+                            onClick={(e) => {
+                              e.stopPropagation();
                               // TODO: Add edit functionality
                               toast.info("Edit meeting coming soon");
                             }}
@@ -307,7 +333,10 @@ export default function MeetingsPage() {
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem 
-                            onClick={() => handleDeleteMeeting(meeting._id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleEndMeeting(meeting._id);
+                            }}
                             className="text-red-600"
                           >
                             <Trash2 className="h-4 w-4 mr-2" />
@@ -333,7 +362,10 @@ export default function MeetingsPage() {
                       <Button 
                         size="sm"
                         className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-xs"
-                        onClick={() => handleJoinMeeting(meeting._id)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleJoinMeeting(meeting._id);
+                        }}
                       >
                         Join
                       </Button>
@@ -341,7 +373,10 @@ export default function MeetingsPage() {
                         size="sm"
                         className="flex-1 text-xs"
                         variant="outline"
-                        onClick={() => copyMeetingLink(meeting)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          copyMeetingLink(meeting);
+                        }}
                       >
                         <Copy className="h-3 w-3 mr-1" />
                         Copy
@@ -361,7 +396,11 @@ export default function MeetingsPage() {
               {upcomingMeetings.length > 0 ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
               {upcomingMeetings.map((meeting) => (
-                <Card key={meeting._id} className="hover:shadow-lg transition-all py-3">
+                <Card 
+                  key={meeting._id} 
+                  className="hover:shadow-lg transition-all py-3 cursor-pointer"
+                  onClick={() => router.push(`/meetings/${meeting._id}/details`)}
+                >
                   <CardContent className="p-2">
                     <div className="flex items-start justify-between mb-1">
                       <h3 className="text-sm font-medium line-clamp-2 leading-tight flex-1 min-w-0">{meeting.title}</h3>
@@ -377,7 +416,17 @@ export default function MeetingsPage() {
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem 
-                            onClick={() => {
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              router.push(`/meetings/${meeting._id}/details`);
+                            }}
+                          >
+                            <Video className="h-4 w-4 mr-2" />
+                            View Details
+                          </DropdownMenuItem>
+                          <DropdownMenuItem 
+                            onClick={(e) => {
+                              e.stopPropagation();
                               // TODO: Add edit functionality
                               toast.info("Edit meeting coming soon");
                             }}
@@ -387,7 +436,10 @@ export default function MeetingsPage() {
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem 
-                            onClick={() => handleDeleteMeeting(meeting._id)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteMeeting(meeting._id);
+                            }}
                             className="text-red-600"
                           >
                             <Trash2 className="h-4 w-4 mr-2" />
@@ -419,7 +471,8 @@ export default function MeetingsPage() {
                         <Button 
                           size="sm"
                           className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-xs"
-                          onClick={() => {
+                          onClick={(e) => {
+                            e.stopPropagation();
                             startMeeting({ meetingId: meeting._id });
                             handleJoinMeeting(meeting._id);
                           }}
@@ -440,7 +493,10 @@ export default function MeetingsPage() {
                         size="sm"
                         className="flex-1 text-xs"
                         variant="outline"
-                        onClick={() => copyMeetingLink(meeting)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          copyMeetingLink(meeting);
+                        }}
                       >
                         <Copy className="h-3 w-3 mr-1" />
                         Copy
@@ -487,7 +543,11 @@ export default function MeetingsPage() {
                   const isExplicitlyEnded = meeting.status === "ended" || meeting.status === "cancelled";
                   
                   return (
-                    <Card key={meeting._id} className="hover:shadow-lg transition-all border-gray-300 bg-gray-50 py-3">
+                    <Card 
+                      key={meeting._id} 
+                      className="hover:shadow-lg transition-all border-gray-300 bg-gray-50 py-3 cursor-pointer"
+                      onClick={() => router.push(`/meetings/${meeting._id}/details`)}
+                    >
                       <CardContent className="p-2">
                         <div className="flex items-start justify-between mb-1">
                           <div className="flex items-start gap-2 flex-1 min-w-0">
@@ -506,14 +566,29 @@ export default function MeetingsPage() {
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end">
                               <DropdownMenuItem 
-                                onClick={() => copyMeetingLink(meeting)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  router.push(`/meetings/${meeting._id}/details`);
+                                }}
+                              >
+                                <Video className="h-4 w-4 mr-2" />
+                                View Details
+                              </DropdownMenuItem>
+                              <DropdownMenuItem 
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  copyMeetingLink(meeting);
+                                }}
                               >
                                 <Copy className="h-4 w-4 mr-2" />
                                 Copy Link
                               </DropdownMenuItem>
                               <DropdownMenuSeparator />
                               <DropdownMenuItem 
-                                onClick={() => handleDeleteMeeting(meeting._id)}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeleteMeeting(meeting._id);
+                                }}
                                 className="text-red-600"
                               >
                                 <Trash2 className="h-4 w-4 mr-2" />

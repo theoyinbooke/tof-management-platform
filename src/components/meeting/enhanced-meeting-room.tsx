@@ -19,7 +19,6 @@ import {
   Monitor,
   MonitorOff,
   MessageSquare,
-  Settings,
   MoreVertical,
   Send,
   Hand,
@@ -34,6 +33,7 @@ import {
   Laugh,
   Angry,
   Frown,
+  Camera,
 } from "lucide-react";
 import { Room, RoomEvent, Track, DataPacket_Kind, LocalParticipant } from "livekit-client";
 import { toast } from "sonner";
@@ -103,11 +103,11 @@ export function EnhancedMeetingRoom({ meetingId, userName, userRole, initialSett
   const [isConnecting, setIsConnecting] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
+  const [isInitialized, setIsInitialized] = useState(false);
 
   // UI State
   const [showChat, setShowChat] = useState(false);
   const [showParticipants, setShowParticipants] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
   const [layout, setLayout] = useState<"grid" | "focus">("grid");
   
   // Media controls
@@ -133,6 +133,22 @@ export function EnhancedMeetingRoom({ meetingId, userName, userRole, initialSett
   const [reactions, setReactions] = useState<EmojiReaction[]>([]);
   const [showReactionPicker, setShowReactionPicker] = useState(false);
 
+  // Device and Audio Settings
+  const [availableDevices, setAvailableDevices] = useState<{
+    audioInputs: MediaDeviceInfo[];
+    audioOutputs: MediaDeviceInfo[];
+    videoInputs: MediaDeviceInfo[];
+  }>({
+    audioInputs: [],
+    audioOutputs: [],
+    videoInputs: [],
+  });
+  const [selectedDevices, setSelectedDevices] = useState({
+    audioInput: '',
+    audioOutput: '',
+    videoInput: '',
+  });
+
   // Convex queries and mutations (declare early)
   const leaveMeeting = useMutation(api.meetings.leaveMeeting);
   const endCurrentSessionMutation = useMutation(api.meetings.endCurrentSession);
@@ -145,6 +161,7 @@ export function EnhancedMeetingRoom({ meetingId, userName, userRole, initialSett
   const stopRecordingMutation = useMutation(api.meetings.stopMeetingRecording);
   const startRecordingAction = useAction(api.livekit.startRecording);
   const stopRecordingAction = useAction(api.livekit.stopRecording);
+  const enableRecordingForMeeting = useMutation(api.meetings.enableRecordingForMeeting);
   
   // Debug: Log screen share state changes
   useEffect(() => {
@@ -158,6 +175,7 @@ export function EnhancedMeetingRoom({ meetingId, userName, userRole, initialSett
   // Sync recording status
   useEffect(() => {
     if (recordingData) {
+      console.log("🎥 Recording data:", recordingData);
       setIsRecording(recordingData.recordingStatus === "recording");
       setRecordingStatus(recordingData.recordingStatus);
     }
@@ -201,9 +219,51 @@ export function EnhancedMeetingRoom({ meetingId, userName, userRole, initialSett
   const meeting = useQuery(api.meetings.getMeeting, { meetingId });
   const joinMeeting = useMutation(api.meetings.joinMeeting);
 
+  // Enumerate available devices
+  const enumerateDevices = async () => {
+    try {
+      await navigator.mediaDevices.getUserMedia({ audio: true, video: true });
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      
+      const audioInputs = devices.filter(device => device.kind === 'audioinput');
+      const audioOutputs = devices.filter(device => device.kind === 'audiooutput');
+      const videoInputs = devices.filter(device => device.kind === 'videoinput');
+      
+      setAvailableDevices({
+        audioInputs,
+        audioOutputs,
+        videoInputs,
+      });
+
+      // Set default devices
+      if (audioInputs.length > 0) {
+        setSelectedDevices(prev => ({
+          ...prev,
+          audioInput: prev.audioInput || audioInputs[0].deviceId,
+        }));
+      }
+      if (audioOutputs.length > 0) {
+        setSelectedDevices(prev => ({
+          ...prev,
+          audioOutput: prev.audioOutput || audioOutputs[0].deviceId,
+        }));
+      }
+      if (videoInputs.length > 0) {
+        setSelectedDevices(prev => ({
+          ...prev,
+          videoInput: prev.videoInput || videoInputs[0].deviceId,
+        }));
+      }
+    } catch (error) {
+      console.error("Failed to enumerate devices:", error);
+    }
+  };
+
+
   // Ensure proper mounting and cleanup
   useEffect(() => {
     setMounted(true);
+    enumerateDevices(); // Load available devices
     
     // Add beforeunload event to cleanup when user closes tab/browser
     const handleBeforeUnload = () => {
@@ -260,10 +320,12 @@ export function EnhancedMeetingRoom({ meetingId, userName, userRole, initialSett
 
   // Initialize meeting
   useEffect(() => {
-    if (!mounted || !meeting) return;
+    if (!mounted || !meeting || !isConnecting || isInitialized) return;
 
     const initializeMeeting = async () => {
       try {
+        console.log("🎯 Initializing meeting:", { meetingId, meetingStatus: meeting.status });
+        
         if (meeting.status === "ended") {
           setError("This meeting has ended");
           setIsConnecting(false);
@@ -272,9 +334,12 @@ export function EnhancedMeetingRoom({ meetingId, userName, userRole, initialSett
           return;
         }
 
+        console.log("🔗 Joining meeting...");
         const joinResult = await joinMeeting({ meetingId });
+        console.log("✅ Join result:", joinResult);
         
         if (joinResult.success && joinResult.needsToken) {
+          console.log("🎫 Generating LiveKit token...");
           const tokenData = await generateTokenAction({
             roomName: joinResult.roomName,
             participantIdentity: `${userName.replace(/\s+/g, '_').toLowerCase()}_${Date.now()}`,
@@ -283,18 +348,22 @@ export function EnhancedMeetingRoom({ meetingId, userName, userRole, initialSett
             canSubscribe: true,
           });
           
+          console.log("✅ Token generated:", { hasToken: !!tokenData.token, url: tokenData.url });
           setToken(tokenData.token);
           setLivekitUrl(tokenData.url);
           
           // Initialize LiveKit after getting credentials
+          console.log("🏠 Initializing LiveKit room...");
           await initializeLiveKit(tokenData.token, tokenData.url, joinResult.roomName);
         } else {
           throw new Error("Failed to join meeting");
         }
 
         setIsConnecting(false);
+        setIsInitialized(true);
+        console.log("✅ Meeting initialization complete");
       } catch (err: any) {
-        console.error("Failed to initialize meeting:", err);
+        console.error("❌ Failed to initialize meeting:", err);
         setError(err.message || "Failed to connect to meeting");
         setIsConnecting(false);
         toast.error("Failed to join meeting");
@@ -302,7 +371,7 @@ export function EnhancedMeetingRoom({ meetingId, userName, userRole, initialSett
     };
 
     initializeMeeting();
-  }, [mounted, meeting, meetingId, joinMeeting, router, generateTokenAction]);
+  }, [mounted, meeting?.status, meetingId, joinMeeting, router, generateTokenAction, isConnecting, isInitialized]);
 
   // Initialize LiveKit
   const initializeLiveKit = async (token: string, serverUrl: string, roomName: string) => {
@@ -468,15 +537,20 @@ export function EnhancedMeetingRoom({ meetingId, userName, userRole, initialSett
       });
 
       // Connect to room
+      console.log("🔌 Connecting to LiveKit room...", { serverUrl, roomName });
       await room.connect(serverUrl, token);
+      console.log("✅ Connected to LiveKit room successfully");
       
       // Add local participant first
+      console.log("👤 Adding local participant...");
       addLocalParticipant(room.localParticipant, videoGrid);
       
       // Enable initial media settings and attach tracks
       if (isCameraEnabled) {
         try {
+          console.log("📹 Enabling camera and microphone...");
           await room.localParticipant.enableCameraAndMicrophone();
+          console.log("✅ Camera and microphone enabled");
           
           // Wait for local video track to be published and attach it
           setTimeout(() => {
@@ -485,12 +559,17 @@ export function EnhancedMeetingRoom({ meetingId, userName, userRole, initialSett
               const localVideoElement = videoGrid.querySelector(`[data-participant="${room.localParticipant.identity}"] video`);
               if (localVideoElement) {
                 videoPublication.track.attach(localVideoElement as HTMLVideoElement);
-                console.log('Local video track attached');
+                console.log('✅ Local video track attached');
+              } else {
+                console.warn('⚠️ Local video element not found');
               }
+            } else {
+              console.warn('⚠️ No video track found');
             }
           }, 500);
         } catch (error) {
-          console.error('Failed to enable camera/microphone:', error);
+          console.error('❌ Failed to enable camera/microphone:', error);
+          toast.error('Failed to enable camera/microphone. Please check permissions.');
         }
       }
       
@@ -633,69 +712,97 @@ export function EnhancedMeetingRoom({ meetingId, userName, userRole, initialSett
 
   // Media controls
   const toggleMic = async () => {
-    if (!roomRef.current) return;
+    console.log("🎤 Toggle mic clicked:", { hasRoom: !!roomRef.current, isMicEnabled });
+    
+    if (!roomRef.current) {
+      console.error("❌ No room reference available");
+      toast.error("Not connected to meeting room");
+      return;
+    }
+    
+    if (!roomRef.current.localParticipant) {
+      console.error("❌ No local participant available");
+      toast.error("Local participant not available");
+      return;
+    }
     
     try {
-      if (isMicEnabled) {
-        await roomRef.current.localParticipant.setMicrophoneEnabled(false);
-        setIsMicEnabled(false);
-        toast.success("Microphone muted");
-      } else {
-        await roomRef.current.localParticipant.setMicrophoneEnabled(true);
-        setIsMicEnabled(true);
-        toast.success("Microphone unmuted");
-      }
+      console.log("🎤 Setting microphone enabled to:", !isMicEnabled);
+      await roomRef.current.localParticipant.setMicrophoneEnabled(!isMicEnabled);
+      setIsMicEnabled(!isMicEnabled);
+      toast.success(isMicEnabled ? "Microphone muted" : "Microphone unmuted");
     } catch (error) {
-      console.error("Failed to toggle microphone:", error);
+      console.error("❌ Failed to toggle microphone:", error);
       toast.error("Failed to toggle microphone");
     }
   };
 
   const toggleCamera = async () => {
-    if (!roomRef.current) return;
+    console.log("📹 Toggle camera clicked:", { hasRoom: !!roomRef.current, isCameraEnabled });
+    
+    if (!roomRef.current) {
+      console.error("❌ No room reference available");
+      toast.error("Not connected to meeting room");
+      return;
+    }
+    
+    if (!roomRef.current.localParticipant) {
+      console.error("❌ No local participant available");
+      toast.error("Local participant not available");
+      return;
+    }
     
     try {
-      if (isCameraEnabled) {
-        await roomRef.current.localParticipant.setCameraEnabled(false);
-        setIsCameraEnabled(false);
-        toast.success("Camera turned off");
-      } else {
-        await roomRef.current.localParticipant.setCameraEnabled(true);
-        setIsCameraEnabled(true);
-        toast.success("Camera turned on");
-      }
+      console.log("📹 Setting camera enabled to:", !isCameraEnabled);
+      await roomRef.current.localParticipant.setCameraEnabled(!isCameraEnabled);
+      setIsCameraEnabled(!isCameraEnabled);
+      toast.success(isCameraEnabled ? "Camera turned off" : "Camera turned on");
     } catch (error) {
-      console.error("Failed to toggle camera:", error);
+      console.error("❌ Failed to toggle camera:", error);
       toast.error("Failed to toggle camera");
     }
   };
 
   const toggleScreenShare = async () => {
-    if (!roomRef.current) return;
+    console.log("🖥️ Toggle screen share clicked:", { hasRoom: !!roomRef.current, isScreenSharing });
+    
+    if (!roomRef.current) {
+      console.error("❌ No room reference available");
+      toast.error("Not connected to meeting room");
+      return;
+    }
+    
+    if (!roomRef.current.localParticipant) {
+      console.error("❌ No local participant available");
+      toast.error("Local participant not available");
+      return;
+    }
     
     try {
-      if (isScreenSharing) {
-        await roomRef.current.localParticipant.setScreenShareEnabled(false);
-        setIsScreenSharing(false);
-        toast.success("Screen sharing stopped");
-      } else {
-        await roomRef.current.localParticipant.setScreenShareEnabled(true);
-        setIsScreenSharing(true);
-        toast.success("Screen sharing started");
-      }
+      console.log("🖥️ Setting screen share enabled to:", !isScreenSharing);
+      await roomRef.current.localParticipant.setScreenShareEnabled(!isScreenSharing);
+      setIsScreenSharing(!isScreenSharing);
+      toast.success(isScreenSharing ? "Screen sharing stopped" : "Screen sharing started");
     } catch (error) {
-      console.error("Failed to toggle screen share:", error);
+      console.error("❌ Failed to toggle screen share:", error);
       toast.error("Failed to toggle screen share");
     }
   };
 
   const toggleHandRaise = () => {
+    console.log("✋ Toggle hand raise clicked:", { handRaised });
     setHandRaised(!handRaised);
     toast.success(handRaised ? "Hand lowered" : "Hand raised");
   };
 
   const startRecording = async () => {
     if (!meeting) return;
+    
+    // Check if LiveKit room is connected
+    if (!roomRef.current || roomRef.current.state !== "connected") {
+      toast.error("Please wait for the meeting to fully connect before starting recording");
+      return;
+    }
     
     try {
       setRecordingStatus("starting");
@@ -862,6 +969,7 @@ export function EnhancedMeetingRoom({ meetingId, userName, userRole, initialSett
         }
       }
       
+      setIsInitialized(false);
       toast.success("You have left the meeting");
       router.push("/meetings");
     } catch (err) {
@@ -1228,7 +1336,10 @@ export function EnhancedMeetingRoom({ meetingId, userName, userRole, initialSett
             {/* Sidebar Tabs */}
             <div className="border-b border-gray-200 flex flex-shrink-0">
               <Button
-                onClick={() => { setShowChat(true); setShowParticipants(false); }}
+                onClick={() => { 
+                  setShowChat(true); 
+                  setShowParticipants(false); 
+                }}
                 variant="ghost"
                 size="sm"
                 className={cn(
@@ -1236,11 +1347,14 @@ export function EnhancedMeetingRoom({ meetingId, userName, userRole, initialSett
                   showChat ? "border-emerald-500 text-emerald-600" : "border-transparent"
                 )}
               >
-                <MessageSquare className="h-4 w-4 mr-2" />
-                <span className="text-sm">Chat</span>
+                <MessageSquare className="h-4 w-4 mr-1" />
+                <span className="text-xs">Chat</span>
               </Button>
               <Button
-                onClick={() => { setShowParticipants(true); setShowChat(false); }}
+                onClick={() => { 
+                  setShowParticipants(true); 
+                  setShowChat(false); 
+                }}
                 variant="ghost"
                 size="sm"
                 className={cn(
@@ -1248,8 +1362,8 @@ export function EnhancedMeetingRoom({ meetingId, userName, userRole, initialSett
                   showParticipants ? "border-emerald-500 text-emerald-600" : "border-transparent"
                 )}
               >
-                <Users className="h-4 w-4 mr-2" />
-                <span className="text-sm">People ({participants.length})</span>
+                <Users className="h-4 w-4 mr-1" />
+                <span className="text-xs">People</span>
               </Button>
             </div>
 
@@ -1339,6 +1453,7 @@ export function EnhancedMeetingRoom({ meetingId, userName, userRole, initialSett
                 </div>
               </div>
             )}
+
           </div>
         )}
       </div>
@@ -1394,8 +1509,9 @@ export function EnhancedMeetingRoom({ meetingId, userName, userRole, initialSett
               <Hand className="h-5 w-5" />
             </Button>
 
+
             {/* Recording Button - Only show for hosts and admins */}
-            {recordingStatus?.canStartRecording || recordingStatus?.canStopRecording ? (
+            {(recordingData?.canStartRecording || recordingData?.canStopRecording) && (
               <Button
                 onClick={isRecording ? stopRecording : startRecording}
                 variant={isRecording ? "destructive" : "secondary"}
@@ -1412,7 +1528,7 @@ export function EnhancedMeetingRoom({ meetingId, userName, userRole, initialSett
                   <Circle className="h-5 w-5" />
                 )}
               </Button>
-            ) : null}
+            )}
 
             {/* Reaction Button */}
             <Button
@@ -1430,7 +1546,9 @@ export function EnhancedMeetingRoom({ meetingId, userName, userRole, initialSett
             <Button
               onClick={() => {
                 setShowChat(!showChat);
-                if (!showChat) setShowParticipants(false);
+                if (!showChat) {
+                  setShowParticipants(false);
+                }
               }}
               variant="ghost"
               size="sm"
@@ -1446,7 +1564,9 @@ export function EnhancedMeetingRoom({ meetingId, userName, userRole, initialSett
             <Button
               onClick={() => {
                 setShowParticipants(!showParticipants);
-                if (!showParticipants) setShowChat(false);
+                if (!showParticipants) {
+                  setShowChat(false);
+                }
               }}
               variant="ghost"
               size="sm"
@@ -1459,6 +1579,7 @@ export function EnhancedMeetingRoom({ meetingId, userName, userRole, initialSett
               <span className="text-sm">{participants.length}</span>
             </Button>
 
+
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button
@@ -1470,11 +1591,6 @@ export function EnhancedMeetingRoom({ meetingId, userName, userRole, initialSett
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => setShowSettings(true)}>
-                  <Settings className="h-4 w-4 mr-2" />
-                  <span className="text-sm">Settings</span>
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={handleDisconnected}>
                   <Phone className="h-4 w-4 mr-2" />
                   <span className="text-sm">Leave Meeting</span>

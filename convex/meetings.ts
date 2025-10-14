@@ -105,6 +105,7 @@ export const createMeeting = mutation({
       waitingRoomEnabled: args.waitingRoomEnabled ?? false,
       maxParticipants: args.maxParticipants,
       recordingEnabled: args.recordingEnabled ?? true,
+      recordingStatus: "idle",
       chatEnabled: true,
       screenShareEnabled: true,
       whiteboardEnabled: true,
@@ -170,6 +171,7 @@ export const createInstantMeeting = mutation({
       coHosts: [],
       waitingRoomEnabled: false,
       recordingEnabled: true,
+      recordingStatus: "idle",
       chatEnabled: true,
       screenShareEnabled: true,
       whiteboardEnabled: true,
@@ -358,6 +360,7 @@ export const joinMeeting = mutation({
         await ctx.db.patch(args.meetingId, {
           status: "live",
           actualStartTime: now,
+          recordingStatus: "idle", // Reset recording status when meeting goes live
           updatedAt: now,
         });
       }
@@ -594,6 +597,82 @@ export const checkMeetingDuration = mutation({
     }
 
     return { success: true, ended: false };
+  },
+});
+
+/**
+ * End a meeting (host/admin only) - permanently ends the meeting and changes status to "ended"
+ */
+export const endMeeting = mutation({
+  args: {
+    meetingId: v.id("meetings"),
+  },
+  handler: async (ctx, args) => {
+    const meeting = await ctx.db.get(args.meetingId);
+    if (!meeting) throw new Error("Meeting not found");
+
+    const user = await authenticateAndAuthorize(ctx, meeting.foundationId, [
+      "admin",
+      "super_admin",
+      "reviewer",
+    ]);
+
+    // Check if user is host, co-host, or admin
+    const isHostOrCoHost = meeting.hostId === user._id || meeting.coHosts.includes(user._id);
+    const isAdmin = user.role === "admin" || user.role === "super_admin";
+    
+    if (!isHostOrCoHost && !isAdmin) {
+      throw new Error("Only hosts, co-hosts, or admins can end the meeting");
+    }
+
+    // Check if meeting is already ended
+    if (meeting.status === "ended") {
+      throw new Error("Meeting is already ended");
+    }
+
+    const now = Date.now();
+
+    // End all current participant sessions
+    const participants = await ctx.db
+      .query("meetingParticipants")
+      .withIndex("by_meeting", (q) => q.eq("meetingId", args.meetingId))
+      .filter((q) => q.eq(q.field("leaveTime"), undefined))
+      .collect();
+
+    for (const participant of participants) {
+      const duration = now - participant.joinTime;
+      await ctx.db.patch(participant._id, {
+        leaveTime: now,
+        duration,
+      });
+    }
+
+    // Mark meeting as ended
+    await ctx.db.patch(args.meetingId, {
+      status: "ended",
+      actualEndTime: now,
+      updatedAt: now,
+    });
+
+    // Audit log
+    await ctx.db.insert("auditLogs", {
+      foundationId: meeting.foundationId,
+      userId: user._id,
+      userEmail: user.email,
+      userRole: user.role,
+      action: "end_meeting",
+      entityType: "meetings",
+      entityId: args.meetingId,
+      description: `Ended meeting: ${meeting.title}`,
+      riskLevel: "medium",
+      createdAt: now,
+    });
+
+    return {
+      success: true,
+      message: "Meeting ended successfully",
+      roomName: meeting.roomName,
+    };
   },
 });
 
@@ -1070,21 +1149,40 @@ export const getRecordingStatus = query({
     
     return {
       recordingStatus: meeting.recordingStatus || "idle",
+      recordingEnabled: meeting.recordingEnabled || false,
       recordingEgressId: meeting.recordingEgressId,
       recordingUrl: meeting.recordingUrl,
       recordingFilename: meeting.recordingFilename,
       recordingDuration: meeting.recordingDuration,
       recordingStartedAt: meeting.recordingStartedAt,
       recordingEndedAt: meeting.recordingEndedAt,
-      canStartRecording: (meeting.hostId === user._id || 
-                          meeting.coHosts.includes(user._id) || 
-                          user.role === "admin" || 
-                          user.role === "super_admin") &&
-                         meeting.status === "live" &&
-                         meeting.recordingEnabled &&
-                         (meeting.recordingStatus === "idle" || 
-                          meeting.recordingStatus === "completed" || 
-                          meeting.recordingStatus === "failed"),
+      canStartRecording: (() => {
+        const isAuthorized = meeting.hostId === user._id || 
+                            meeting.coHosts.includes(user._id) || 
+                            user.role === "admin" || 
+                            user.role === "super_admin";
+        const isLive = meeting.status === "live";
+        const isEnabled = meeting.recordingEnabled;
+        const isValidStatus = !meeting.recordingStatus || 
+                              meeting.recordingStatus === "idle" || 
+                              meeting.recordingStatus === "completed" || 
+                              meeting.recordingStatus === "failed";
+        
+        console.log("🔍 canStartRecording conditions:", {
+          isAuthorized,
+          isLive,
+          isEnabled,
+          isValidStatus,
+          meetingStatus: meeting.status,
+          recordingStatus: meeting.recordingStatus,
+          recordingEnabled: meeting.recordingEnabled,
+          userRole: user.role,
+          isHost: meeting.hostId === user._id,
+          isCoHost: meeting.coHosts.includes(user._id)
+        });
+        
+        return isAuthorized && isLive && isEnabled && isValidStatus;
+      })(),
       canStopRecording: (meeting.hostId === user._id || 
                          meeting.coHosts.includes(user._id) || 
                          user.role === "admin" || 
@@ -1171,8 +1269,8 @@ export const enableRecordingForAllMeetings = mutation({
       .withIndex("by_clerk_id", (q) => q.eq("clerkId", identity.subject))
       .unique();
     
-    if (!user || user.role !== "super_admin") {
-      throw new Error("Only super admins can run this migration");
+    if (!user || (user.role !== "super_admin" && user.role !== "admin")) {
+      throw new Error("Only admins and super admins can run this migration");
     }
     
     // Get all meetings where recordingEnabled is false or undefined
@@ -1195,5 +1293,270 @@ export const enableRecordingForAllMeetings = mutation({
       updatedCount,
       message: `Successfully enabled recording for ${updatedCount} meetings`,
     };
+  },
+});
+
+/**
+ * Enable recording for a specific meeting (for debugging)
+ */
+export const enableRecordingForMeeting = mutation({
+  args: {
+    meetingId: v.id("meetings"),
+  },
+  handler: async (ctx, args) => {
+    const meeting = await ctx.db.get(args.meetingId);
+    if (!meeting) throw new Error("Meeting not found");
+    
+    const user = await authenticateAndAuthorize(ctx, meeting.foundationId, [
+      "admin",
+      "super_admin"
+    ]);
+    
+    // Enable recording for this meeting
+    await ctx.db.patch(args.meetingId, {
+      recordingEnabled: true,
+    });
+    
+    return {
+      success: true,
+      message: `Recording enabled for meeting: ${meeting.title}`,
+    };
+  },
+});
+
+/**
+ * Get meeting notes for a specific meeting
+ */
+export const getMeetingNotes = query({
+  args: {
+    meetingId: v.id("meetings"),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) return null;
+    
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_id", (q) => q.eq("clerkId", identity.subject))
+      .unique();
+    
+    if (!user) return null;
+    
+    const meeting = await ctx.db.get(args.meetingId);
+    if (!meeting) return null;
+    
+    // Check access to meeting
+    if (meeting.foundationId !== user.foundationId && 
+        user.role !== "super_admin") {
+      return null;
+    }
+    
+    // Get notes for this meeting
+    const notes = await ctx.db
+      .query("meetingNotes")
+      .withIndex("by_meeting", (q) => q.eq("meetingId", args.meetingId))
+      .order("desc")
+      .collect();
+    
+    return notes;
+  },
+});
+
+/**
+ * Add a meeting note
+ */
+export const addMeetingNote = mutation({
+  args: {
+    meetingId: v.id("meetings"),
+    content: v.string(),
+    timestamp: v.optional(v.number()),
+  },
+  handler: async (ctx, args) => {
+    const meeting = await ctx.db.get(args.meetingId);
+    if (!meeting) throw new Error("Meeting not found");
+    
+    const user = await authenticateAndAuthorize(ctx, meeting.foundationId, [
+      "admin",
+      "super_admin",
+      "reviewer",
+      "beneficiary", 
+      "guardian"
+    ]);
+    
+    const noteId = await ctx.db.insert("meetingNotes", {
+      meetingId: args.meetingId,
+      content: args.content,
+      authorId: user._id,
+      authorName: `${user.firstName} ${user.lastName}`,
+      timestamp: args.timestamp,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+    
+    // Audit log
+    await ctx.db.insert("auditLogs", {
+      foundationId: meeting.foundationId,
+      userId: user._id,
+      userEmail: user.email,
+      userRole: user.role,
+      action: "create",
+      entityType: "meetingNote",
+      entityId: noteId,
+      description: `Added meeting note for meeting: ${meeting.title}`,
+      riskLevel: "low",
+      createdAt: Date.now(),
+    });
+    
+    return noteId;
+  },
+});
+
+/**
+ * Update a meeting note
+ */
+export const updateMeetingNote = mutation({
+  args: {
+    noteId: v.id("meetingNotes"),
+    content: v.string(),
+  },
+  handler: async (ctx, args) => {
+    const note = await ctx.db.get(args.noteId);
+    if (!note) throw new Error("Note not found");
+    
+    const meeting = await ctx.db.get(note.meetingId);
+    if (!meeting) throw new Error("Meeting not found");
+    
+    const user = await authenticateAndAuthorize(ctx, meeting.foundationId, [
+      "admin",
+      "super_admin",
+      "reviewer",
+      "beneficiary", 
+      "guardian"
+    ]);
+    
+    // Only author or admins can edit notes
+    if (note.authorId !== user._id && 
+        user.role !== "admin" && 
+        user.role !== "super_admin") {
+      throw new Error("Permission denied");
+    }
+    
+    await ctx.db.patch(args.noteId, {
+      content: args.content,
+      updatedAt: Date.now(),
+    });
+    
+    return args.noteId;
+  },
+});
+
+/**
+ * Delete a meeting note
+ */
+export const deleteMeetingNote = mutation({
+  args: {
+    noteId: v.id("meetingNotes"),
+  },
+  handler: async (ctx, args) => {
+    const note = await ctx.db.get(args.noteId);
+    if (!note) throw new Error("Note not found");
+    
+    const meeting = await ctx.db.get(note.meetingId);
+    if (!meeting) throw new Error("Meeting not found");
+    
+    const user = await authenticateAndAuthorize(ctx, meeting.foundationId, [
+      "admin",
+      "super_admin",
+      "reviewer",
+      "beneficiary", 
+      "guardian"
+    ]);
+    
+    // Only author or admins can delete notes
+    if (note.authorId !== user._id && 
+        user.role !== "admin" && 
+        user.role !== "super_admin") {
+      throw new Error("Permission denied");
+    }
+    
+    await ctx.db.delete(args.noteId);
+    
+    return { success: true };
+  },
+});
+
+/**
+ * Get meeting chat history
+ */
+export const getMeetingChat = query({
+  args: {
+    meetingId: v.id("meetings"),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) return null;
+    
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_id", (q) => q.eq("clerkId", identity.subject))
+      .unique();
+    
+    if (!user) return null;
+    
+    const meeting = await ctx.db.get(args.meetingId);
+    if (!meeting) return null;
+    
+    // Check access to meeting
+    if (meeting.foundationId !== user.foundationId && 
+        user.role !== "super_admin") {
+      return null;
+    }
+    
+    // Get chat messages for this meeting
+    const chatMessages = await ctx.db
+      .query("meetingChatMessages")
+      .withIndex("by_meeting", (q) => q.eq("meetingId", args.meetingId))
+      .order("asc")
+      .collect();
+    
+    return chatMessages;
+  },
+});
+
+/**
+ * Get meeting transcript
+ */
+export const getMeetingTranscript = query({
+  args: {
+    meetingId: v.id("meetings"),
+  },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) return null;
+    
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_clerk_id", (q) => q.eq("clerkId", identity.subject))
+      .unique();
+    
+    if (!user) return null;
+    
+    const meeting = await ctx.db.get(args.meetingId);
+    if (!meeting) return null;
+    
+    // Check access to meeting
+    if (meeting.foundationId !== user.foundationId && 
+        user.role !== "super_admin") {
+      return null;
+    }
+    
+    // Get transcript entries for this meeting
+    const transcriptEntries = await ctx.db
+      .query("meetingTranscripts")
+      .withIndex("by_meeting", (q) => q.eq("meetingId", args.meetingId))
+      .order("asc")
+      .collect();
+    
+    return transcriptEntries;
   },
 });

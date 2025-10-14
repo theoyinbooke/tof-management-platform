@@ -2267,4 +2267,70 @@ export default defineSchema({
   })
   .index("by_meeting", ["meetingId"])
   .index("by_timestamp", ["timestamp"]),
+
+  // Meeting Chat Messages (for consistency with backend)
+  meetingChatMessages: defineTable({
+    meetingId: v.id("meetings"),
+    senderId: v.id("users"),
+    senderName: v.string(),
+    
+    // Message
+    message: v.string(),
+    type: v.union(
+      v.literal("text"),
+      v.literal("file"),
+      v.literal("system")
+    ),
+    
+    // File attachment
+    fileUrl: v.optional(v.string()),
+    fileName: v.optional(v.string()),
+    
+    timestamp: v.number(),
+  })
+  .index("by_meeting", ["meetingId"])
+  .index("by_timestamp", ["timestamp"]),
+
+  // Meeting Notes
+  meetingNotes: defineTable({
+    meetingId: v.id("meetings"),
+    authorId: v.id("users"),
+    authorName: v.string(),
+    
+    // Note content
+    content: v.string(),
+    timestamp: v.optional(v.number()), // Video timestamp if applicable
+    
+    createdAt: v.number(),
+    updatedAt: v.number(),
+  })
+  .index("by_meeting", ["meetingId"])
+  .index("by_author", ["authorId"])
+  .index("by_created", ["createdAt"]),
+
+  // Meeting Transcripts
+  meetingTranscripts: defineTable({
+    meetingId: v.id("meetings"),
+    speakerId: v.id("users"),
+    speakerName: v.string(),
+    
+    // Transcript content
+    text: v.string(),
+    timestamp: v.number(), // Video timestamp in seconds
+    confidence: v.number(), // AI confidence score 0-1
+    
+    // Language and processing info
+    language: v.optional(v.string()),
+    processingStatus: v.union(
+      v.literal("pending"),
+      v.literal("processing"),
+      v.literal("completed"),
+      v.literal("failed")
+    ),
+    
+    createdAt: v.number(),
+  })
+  .index("by_meeting", ["meetingId"])
+  .index("by_speaker", ["speakerId"])
+  .index("by_timestamp", ["timestamp"]),
 });

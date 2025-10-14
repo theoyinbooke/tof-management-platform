@@ -2,7 +2,8 @@
 
 import { v } from "convex/values";
 import { action } from "./_generated/server";
-import { AccessToken, RoomServiceClient, EgressClient, EncodedFileOutput, S3Upload } from "livekit-server-sdk";
+import { internal } from "./_generated/api";
+import { AccessToken, RoomServiceClient, EgressClient, EncodedFileOutput, EncodedFileType } from "livekit-server-sdk";
 
 /**
  * Generate LiveKit access token for a meeting participant
@@ -64,19 +65,26 @@ export const terminateRoom = action({
       
       // Delete/terminate the room
       await roomService.deleteRoom(args.roomName);
-      console.log(`LiveKit room ${args.roomName} terminated successfully`);
+      console.log(`✅ LiveKit room ${args.roomName} terminated successfully`);
       
       return { success: true };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
       
-      // Handle specific error cases
-      if (error instanceof Error && error.message.includes('Not Found')) {
-        console.log(`LiveKit room ${args.roomName} not found - already deleted or doesn't exist`);
+      // Handle specific error cases - check for various "not found" patterns
+      const isNotFoundError = (
+        (error instanceof Error && error.message.includes('Not Found')) ||
+        (error as any)?.name === 'Not Found' ||
+        (error as any)?.code === 'not_found' ||
+        (error as any)?.status === 404
+      );
+      
+      if (isNotFoundError) {
+        console.log(`ℹ️ LiveKit room ${args.roomName} not found - already deleted or doesn't exist`);
         return { success: true, message: "Room already terminated" };
       }
       
-      console.error("Failed to terminate LiveKit room:", error);
+      console.error("❌ Failed to terminate LiveKit room:", error);
       // Don't throw error to prevent breaking the frontend flow
       return { success: false, error: errorMessage };
     }
@@ -89,7 +97,7 @@ export const terminateRoom = action({
 export const startRecording = action({
   args: {
     roomName: v.string(),
-    meetingId: v.optional(v.string()),
+    meetingId: v.id("meetings"),
     outputLocation: v.optional(v.string()), // S3 bucket path or local path
   },
   handler: async (ctx, args) => {
@@ -101,42 +109,40 @@ export const startRecording = action({
       throw new Error("LiveKit credentials not configured");
     }
 
+    // Generate unique filename for the recording
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const filename = args.meetingId 
+      ? `meeting-${args.meetingId}-${timestamp}.mp4`
+      : `room-${args.roomName}-${timestamp}.mp4`;
+
     try {
       const egressClient = new EgressClient(livekitUrl, apiKey, apiSecret);
       
-      // Generate unique filename for the recording
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-      const filename = args.meetingId 
-        ? `meeting-${args.meetingId}-${timestamp}.mp4`
-        : `room-${args.roomName}-${timestamp}.mp4`;
-      
-      // For now, we'll use local file storage (can be extended to S3)
+      // Create simple encoded file output for LiveKit Cloud
+      // This will use LiveKit's default storage
       const fileOutput = new EncodedFileOutput({
-        filepath: args.outputLocation || `recordings/${filename}`,
-        // Optional: Add S3 upload configuration
-        // output: {
-        //   case: 's3',
-        //   value: new S3Upload({
-        //     accessKey: process.env.AWS_ACCESS_KEY_ID || '',
-        //     secret: process.env.AWS_SECRET_ACCESS_KEY || '',
-        //     bucket: process.env.S3_RECORDINGS_BUCKET || 'livekit-recordings',
-        //     region: process.env.AWS_REGION || 'us-east-1',
-        //   }),
-        // },
+        fileType: EncodedFileType.MP4,
       });
 
-      // Start the room composite recording
-      const egressInfo = await egressClient.startRoomCompositeEgress(args.roomName, fileOutput, {
-        layout: 'grid-light', // Options: 'speaker-light', 'speaker-dark', 'grid-light', 'grid-dark'
-        audioOnly: false,
-        videoOnly: false,
-        customBaseUrl: undefined, // Can be used for custom layouts
-      });
+      // Start the room composite recording with minimal configuration
+      const egressInfo = await egressClient.startRoomCompositeEgress(
+        args.roomName, 
+        fileOutput
+        // Use default options for now to avoid parameter issues
+      );
 
       console.log(`Recording started for room ${args.roomName}:`, {
         egressId: egressInfo.egressId,
         status: egressInfo.status,
         filename: filename,
+      });
+
+      // Update meeting recording status to "recording"
+      await ctx.runMutation(internal.meetings.updateRecordingStatus, {
+        meetingId: args.meetingId,
+        recordingStatus: "recording",
+        egressId: egressInfo.egressId,
+        recordingFilename: filename,
       });
 
       return {
@@ -148,7 +154,24 @@ export const startRecording = action({
       };
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
-      console.error("Failed to start recording:", error);
+      console.error("Failed to start recording:", {
+        error: error,
+        errorName: (error as any)?.name,
+        errorStatus: (error as any)?.status,
+        errorCode: (error as any)?.code,
+        errorMetadata: (error as any)?.metadata,
+        roomName: args.roomName,
+        outputLocation: args.outputLocation || `recordings/${filename}`,
+        filename: filename,
+        method: "simplified recording without external storage"
+      });
+      
+      // Update meeting recording status to "failed" 
+      await ctx.runMutation(internal.meetings.updateRecordingStatus, {
+        meetingId: args.meetingId,
+        recordingStatus: "failed",
+      });
+      
       return { success: false, error: errorMessage };
     }
   },
