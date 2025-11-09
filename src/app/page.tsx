@@ -92,10 +92,10 @@ export default function LandingPage() {
               </div>
             </div>
             <div className="flex items-center gap-2 md:gap-4">
-              <Link href="/sign-in">
+              <Link href="/sign-in" className="cursor-pointer">
                 <Button variant="outline" size="sm" className="md:px-4">Sign In</Button>
               </Link>
-              <Link href="/sign-up">
+              <Link href="/sign-up" className="cursor-pointer">
                 <Button size="sm" className="md:px-4">Get Started</Button>
               </Link>
             </div>
@@ -121,13 +121,13 @@ export default function LandingPage() {
               <span className="block sm:inline"> Supporting 500+ beneficiaries across Nigeria.</span>
             </p>
             <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 justify-center mb-6 md:mb-8 px-4 sm:px-0">
-              <Link href="/sign-up" className="w-full sm:w-auto">
+              <Link href="/sign-up" className="w-full sm:w-auto cursor-pointer">
                 <Button size="lg" className="min-h-[44px] w-full sm:w-auto text-sm md:text-base">
                   Get Started
                   <ArrowRight className="ml-2 h-4 w-4 md:h-5 md:w-5" />
                 </Button>
               </Link>
-              <Link href="/sign-in" className="w-full sm:w-auto">
+              <Link href="/sign-in" className="w-full sm:w-auto cursor-pointer">
                 <Button size="lg" variant="outline" className="min-h-[44px] w-full sm:w-auto text-sm md:text-base">
                   Sign In
                 </Button>

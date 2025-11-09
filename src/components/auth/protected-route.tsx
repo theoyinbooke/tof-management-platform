@@ -86,12 +86,18 @@ export function ProtectedRoute({
   // User is authenticated with Clerk but not found in Convex (might be syncing)
   if (isSignedIn && !isAuthenticated) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <h2 className="text-2xl font-bold mb-2">Setting up your account...</h2>
+      <div className="flex items-center justify-center min-h-screen bg-gray-50 p-6">
+        <div className="text-center max-w-md bg-white p-8 rounded-lg shadow-lg">
+          <div className="mb-4">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
+          </div>
+          <h2 className="text-2xl font-bold mb-3 text-gray-900">Setting up your account...</h2>
           <p className="text-gray-600 mb-4">Please wait while we prepare your dashboard.</p>
-          <div className="flex justify-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+          <div className="mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-md text-left">
+            <p className="text-sm text-yellow-800">
+              <strong>Taking longer than expected?</strong><br/>
+              This may indicate that Clerk authentication needs to be configured in your Convex dashboard.
+            </p>
           </div>
         </div>
       </div>
